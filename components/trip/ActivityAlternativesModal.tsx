@@ -154,16 +154,16 @@ export function ActivityAlternativesModal({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
-          className="relative z-10 w-full max-w-2xl rounded-2xl border border-border/80 bg-card p-6 shadow-2xl"
+          className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border/80 bg-card p-4 sm:p-6 shadow-2xl"
         >
-          {/* Header */}
-          <div className="flex items-start justify-between border-b border-border/60 pb-4">
+          {/* Header fisso in alto con il pulsante X che NON viene mai nascosto durante lo scroll */}
+          <div className="flex items-start justify-between border-b border-border/60 pb-3 sm:pb-4 shrink-0">
             <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
+              <div className="rounded-xl bg-primary/10 p-2 sm:p-2.5 text-primary">
                 <Sparkles className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-xl font-bold tracking-tight">Alternative Disponibili</h2>
+                <h2 className="text-base sm:text-xl font-bold tracking-tight">Alternative Disponibili</h2>
                 <p className="text-xs text-muted-foreground">
                   Seleziona un&apos;alternativa per sostituirla direttamente nell&apos;itinerario.
                 </p>
@@ -172,39 +172,41 @@ export function ActivityAlternativesModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0 cursor-pointer"
               aria-label="Chiudi"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
 
-          {/* Current Activity Box summary */}
-          <div className="my-4 rounded-xl border border-primary/20 bg-primary/5 p-3.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
-              Attività Attuale
-            </p>
-            <div className="mt-1 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="rounded-lg bg-background p-1.5 shadow-xs">
-                  <Icon className="h-4 w-4 text-primary" />
-                </span>
-                <div>
-                  <h4 className="text-sm font-semibold">{activity.title}</h4>
-                  {activity.description && (
-                    <p className="text-xs text-muted-foreground line-clamp-1">{activity.description}</p>
-                  )}
+          {/* Corpo modale scrollabile internamente */}
+          <div className="flex-1 overflow-y-auto pt-4 space-y-4 pr-1">
+            {/* Current Activity Box summary */}
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
+                Attività Attuale
+              </p>
+              <div className="mt-1 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="rounded-lg bg-background p-1.5 shadow-xs">
+                    <Icon className="h-4 w-4 text-primary" />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-semibold">{activity.title}</h4>
+                    {activity.description && (
+                      <p className="text-xs text-muted-foreground line-clamp-1">{activity.description}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right whitespace-nowrap">
+                  <span className="text-xs font-semibold text-foreground">{activity.time}</span>
+                  <p className="text-xs text-muted-foreground">~{activity.estimatedCost}€</p>
                 </div>
               </div>
-              <div className="text-right whitespace-nowrap">
-                <span className="text-xs font-semibold text-foreground">{activity.time}</span>
-                <p className="text-xs text-muted-foreground">~{activity.estimatedCost}€</p>
-              </div>
             </div>
-          </div>
 
-          {/* Modal Body: Loading, Error or Alternatives List */}
-          <div className="mt-4 space-y-3 min-h-[220px] flex flex-col justify-center">
+            {/* Modal Body: Loading, Error or Alternatives List */}
+            <div className="space-y-3 min-h-[180px] flex flex-col justify-center">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -303,6 +305,7 @@ export function ActivityAlternativesModal({
                 })}
               </ul>
             )}
+          </div>
           </div>
         </motion.div>
       </div>
