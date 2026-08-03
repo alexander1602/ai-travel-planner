@@ -3,6 +3,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { Bot, Sparkles, X } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { ChatBox } from "@/components/chat/ChatBox";
 import { TripTimeline } from "@/components/trip/TripTimeline";
@@ -15,6 +17,7 @@ import type { Activity, ActivityAlternative, Trip } from "@/types/trip";
 export default function DashboardPage() {
   const [trip, setTrip] = useState<Trip | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
   const [selectedActivityForAlternatives, setSelectedActivityForAlternatives] = useState<{
     dayId: string;
     activity: Activity;
@@ -158,13 +161,10 @@ export default function DashboardPage() {
       : null;
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col relative">
       <Navbar />
-      <main className="mx-auto grid w-full max-w-[1600px] flex-1 grid-cols-1 gap-6 p-6 lg:grid-cols-[340px_1fr_360px]">
-        <section aria-label="Chat assistente" className="h-[calc(100vh-140px)] lg:sticky lg:top-24">
-          <ChatBox trip={trip} onTripUpdate={handleTripUpdate} />
-        </section>
-
+      <main className="mx-auto grid w-full max-w-[1400px] flex-1 grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-[1.5fr_1fr]">
+        {/* Timeline principale */}
         <section aria-label="Timeline del viaggio" className="min-w-0">
           <header className="mb-4">
             <h1 className="text-2xl font-semibold">{trip.title}</h1>
@@ -180,17 +180,88 @@ export default function DashboardPage() {
           />
         </section>
 
+        {/* Budget e Mappa */}
         <section aria-label="Budget e mappa" className="space-y-6 lg:sticky lg:top-24">
           <BudgetCard
             totalBudget={trip.totalBudget}
             currency={trip.currency}
             breakdown={trip.budgetBreakdown}
           />
-          <div className="h-64">
+          <div className="h-64 sm:h-80 lg:h-[380px]">
             <MapPanel trip={trip} />
           </div>
         </section>
       </main>
+
+      {/* PULSANTE FLOATING TRIP ASSISTANT (UNIVERSALE PC & MOBILE) */}
+      <div className="fixed bottom-6 right-6 z-[9999]">
+        <motion.button
+          type="button"
+          onClick={() => setIsMobileChatOpen((prev) => !prev)}
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.92 }}
+          className="relative flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_10px_30px_-5px_rgba(0,0,0,0.35)] ring-4 ring-primary/20 backdrop-blur-md transition-all cursor-pointer"
+          aria-label="Apri Trip Assistant"
+        >
+          <Bot className="h-6 w-6" />
+          <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[9px] font-bold text-white ring-2 ring-background animate-pulse">
+            ✨
+          </span>
+        </motion.button>
+      </div>
+
+      {/* CASSELLA TRIP ASSISTANT A SCOMPARSA (DRAWER UNIVERSALE PC & MOBILE) */}
+      <AnimatePresence>
+        {isMobileChatOpen && (
+          <div className="fixed inset-0 z-[99999] flex flex-col justify-end sm:justify-end sm:items-end p-0 sm:p-6 bg-black/40 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileChatOpen(false)}
+              className="fixed inset-0"
+            />
+
+            <motion.div
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="relative z-10 flex h-[85vh] sm:h-[620px] w-full sm:w-[420px] flex-col rounded-t-[2rem] sm:rounded-2xl border border-border bg-card p-4 shadow-2xl"
+            >
+              {/* Header Assistente */}
+              <div className="flex items-center justify-between border-b border-border/60 pb-3 mb-2 px-1">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <Bot className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h3 className="text-sm font-bold flex items-center gap-1.5">
+                      Trip Assistant
+                      <Sparkles className="h-3.5 w-3.5 text-amber-500 animate-pulse" />
+                    </h3>
+                    <p className="text-[11px] text-muted-foreground">Assistenza AI in tempo reale</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsMobileChatOpen(false)}
+                  className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+                  aria-label="Chiudi Assistente"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Componente ChatBox completo */}
+              <div className="flex-1 overflow-hidden">
+                <ChatBox trip={trip} onTripUpdate={handleTripUpdate} />
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <ActivityAlternativesModal
         isOpen={Boolean(selectedActivityForAlternatives)}
@@ -203,3 +274,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

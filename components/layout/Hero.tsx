@@ -301,7 +301,7 @@ export function Hero() {
                           animate={{ opacity: 1, scale: 1, y: 0 }}
                           exit={{ opacity: 0, scale: 0.98, y: -4 }}
                           transition={{ duration: 0.2 }}
-                          className="grid grid-cols-2 gap-2.5"
+                          className="grid grid-cols-1 sm:grid-cols-2 gap-2.5"
                         >
                           <motion.button
                             type="button"
@@ -385,7 +385,7 @@ export function Hero() {
                           transition={{ duration: 0.2 }}
                           className="space-y-2"
                         >
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <label className="rounded-xl border border-border/80 bg-background p-2.5 transition-colors hover:border-primary/50">
                               <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                                 Partenza
