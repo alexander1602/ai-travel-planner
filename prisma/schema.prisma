@@ -1,0 +1,124 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Sviluppo: sqlite. Produzione: cambiare in "postgresql" e aggiornare DATABASE_URL.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  name          String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  trips         Trip[]
+  favoriteTrips FavoriteTrip[]
+}
+
+model Trip {
+  id            String         @id @default(cuid())
+  userId        String?
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  title         String
+  destination   String
+  startDate     DateTime?
+  endDate       DateTime?
+  durationDays  Int
+  totalBudget   Float
+  currency      String         @default("EUR")
+  prompt        String
+  status        TripStatus     @default(DRAFT)
+  days          TripDay[]
+  chatMessages  ChatMessage[]
+  favoritedBy   FavoriteTrip[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+enum TripStatus {
+  DRAFT
+  GENERATING
+  READY
+  ARCHIVED
+}
+
+model TripDay {
+  id          String     @id @default(cuid())
+  tripId      String
+  trip        Trip       @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  dayNumber   Int
+  date        DateTime?
+  city        String
+  title       String
+  description String
+  order       Int
+  estimatedCost Float    @default(0)
+  activities  Activity[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([tripId, order])
+}
+
+model Activity {
+  id            String       @id @default(cuid())
+  tripDayId     String
+  tripDay       TripDay      @relation(fields: [tripDayId], references: [id], onDelete: Cascade)
+  time          String
+  title         String
+  description   String?
+  category      ActivityCategory @default(SIGHTSEEING)
+  estimatedCost Float        @default(0)
+  order         Int
+  createdAt     DateTime     @default(now())
+
+  @@index([tripDayId, order])
+}
+
+enum ActivityCategory {
+  SIGHTSEEING
+  FOOD
+  TRANSPORT
+  ACCOMMODATION
+  ACTIVITY
+  SHOPPING
+  NIGHTLIFE
+  WELLNESS
+  CULTURE
+  ENTERTAINMENT
+  RELAX
+  OTHER
+}
+
+model ChatMessage {
+  id        String     @id @default(cuid())
+  tripId    String
+  trip      Trip       @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  role      ChatRole
+  content   String
+  createdAt DateTime   @default(now())
+
+  @@index([tripId, createdAt])
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model FavoriteTrip {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tripId    String
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, tripId])
+}
