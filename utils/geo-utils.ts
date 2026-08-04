@@ -315,43 +315,56 @@ function setGeoCache(key: string, coords: { lat: number; lng: number }) {
  * Geocodifica dinamica asincrona via OpenStreetMap Nominatim API con caching.
  */
 export async function geocodeCity(cityName: string, destinationName?: string): Promise<{ lat: number; lng: number } | null> {
-  const cleanCity = cityName.trim().toLowerCase();
-  const cleanDest = destinationName?.trim().toLowerCase();
-  const cacheKey = cleanDest ? `${cleanCity}, ${cleanDest}` : cleanCity;
+  const cleanCity = cityName.trim();
+  const cleanDest = destinationName?.trim();
 
-  const cache = getGeoCache();
-  if (cache[cacheKey]) {
-    return cache[cacheKey];
-  }
-  if (cache[cleanCity]) {
-    return cache[cleanCity];
-  }
+  const queriesToTry: string[] = [];
 
-  try {
-    const query = destinationName && !cleanCity.includes(cleanDest || "")
-      ? `${cityName}, ${destinationName}`
-      : cityName;
-
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
-    const res = await fetch(url, {
-      headers: {
-        "Accept-Language": "it,en;q=0.8",
-      },
-    });
-
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (Array.isArray(data) && data.length > 0) {
-      const lat = parseFloat(data[0].lat);
-      const lng = parseFloat(data[0].lon);
-      if (!isNaN(lat) && !isNaN(lng)) {
-        const result = { lat, lng };
-        setGeoCache(cacheKey, result);
-        return result;
-      }
+  if (cleanDest && cleanCity) {
+    if (cleanDest.toLowerCase().includes(cleanCity.toLowerCase())) {
+      queriesToTry.push(cleanDest);
+    } else if (cleanCity.toLowerCase().includes(cleanDest.toLowerCase())) {
+      queriesToTry.push(cleanCity);
+    } else {
+      queriesToTry.push(`${cleanCity}, ${cleanDest}`);
     }
-  } catch {
-    // Return null in caso di assenza di rete o blocco CORS/Rate limit
+  }
+
+  if (cleanCity) queriesToTry.push(cleanCity);
+  if (cleanDest) queriesToTry.push(cleanDest);
+
+  const uniqueQueries = Array.from(new Set(queriesToTry.filter(Boolean)));
+
+  for (const query of uniqueQueries) {
+    const cacheKey = query.toLowerCase();
+    const cache = getGeoCache();
+    if (cache[cacheKey]) {
+      return cache[cacheKey];
+    }
+
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+      const res = await fetch(url, {
+        headers: {
+          "Accept-Language": "it,en;q=0.8",
+        },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].lat && data[0].lon) {
+          const lat = parseFloat(data[0].lat);
+          const lng = parseFloat(data[0].lon);
+          if (!isNaN(lat) && !isNaN(lng)) {
+            const result = { lat, lng };
+            setGeoCache(cacheKey, result);
+            return result;
+          }
+        }
+      }
+    } catch {
+      // Ignora errori temporanei di rete o CORS
+    }
   }
 
   return null;
