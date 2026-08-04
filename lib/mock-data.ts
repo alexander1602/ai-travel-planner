@@ -1,5 +1,5 @@
 // lib/mock-data.ts
-// Dati realistici usati quando nessuna chiave AI è configurata.
+// Dati realistici usati quando nessuna chiave AI è configurata o in modalità fallback.
 
 import type { HotelOption, Trip } from "@/types/trip";
 
@@ -15,10 +15,93 @@ function extractDays(prompt: string): number {
   return 5;
 }
 
-function extractDestination(prompt: string): string {
-  const known = ["Japan", "Giappone", "Paris", "Parigi", "Rome", "Roma", "Bali", "New York"];
-  const found = known.find((place) => prompt.toLowerCase().includes(place.toLowerCase()));
-  return found ?? "Tokyo";
+export function extractDestination(prompt: string, explicitDestination?: string): string {
+  if (explicitDestination && explicitDestination.trim().length > 0) {
+    return explicitDestination.trim();
+  }
+
+  const knownMap: Record<string, string> = {
+    avignone: "Avignone",
+    avignon: "Avignone",
+    japan: "Giappone",
+    giappone: "Giappone",
+    paris: "Parigi",
+    parigi: "Parigi",
+    rome: "Roma",
+    roma: "Roma",
+    bali: "Bali",
+    "new york": "New York",
+    tokyo: "Tokyo",
+    kyoto: "Kyoto",
+    osaka: "Osaka",
+    londra: "Londra",
+    london: "Londra",
+    madrid: "Madrid",
+    barcellona: "Barcellona",
+    barcelona: "Barcellona",
+    berlino: "Berlino",
+    berlin: "Berlino",
+    amsterdam: "Amsterdam",
+    lisbona: "Lisbona",
+    lisbon: "Lisbona",
+    firenze: "Firenze",
+    venezia: "Venezia",
+    milano: "Milano",
+    napoli: "Napoli",
+  };
+
+  const promptLower = prompt.toLowerCase();
+  for (const [key, canonical] of Object.entries(knownMap)) {
+    if (promptLower.includes(key)) {
+      return canonical;
+    }
+  }
+
+  // Regex pattern 1: "Viaggio a/ad/in/per <Destination>"
+  const matchTravelTo = prompt.match(
+    /(?:viaggio|itinerario|vacanza|tappa|tour|visita)\s+(?:a|ad|in|per)\s+([^.,;:\(\)\d]+)/i
+  );
+  if (matchTravelTo && matchTravelTo[1]) {
+    const raw = matchTravelTo[1].trim();
+    const cleaned = raw
+      .replace(/\s+(?:di|dal|per|con|stile|dettagli|in|del|della|degli|budget).*/i, "")
+      .trim();
+    if (cleaned.length >= 2) {
+      return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    }
+  }
+
+  // Regex pattern 2: "a <Destination>", "in <Destination>"
+  const matchPrep = prompt.match(
+    /\b(?:a|ad|in|per)\s+([A-ZÀ-ÖØ-öø-ÿa-z\s\-']+?)(?=\s+(?:di|dal|per|con|budget|giorni|days|weekend|[.,;:]|$))/i
+  );
+  if (matchPrep && matchPrep[1]) {
+    const cleaned = matchPrep[1].trim();
+    if (
+      cleaned.length >= 2 &&
+      !["un", "una", "uno", "questo", "questa"].includes(cleaned.toLowerCase())
+    ) {
+      return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    }
+  }
+
+  // Fallback: extract first valid non-stopword word
+  const words = prompt
+    .replace(/[.,;:]/g, " ")
+    .split(/\s+/)
+    .filter(
+      (w) =>
+        !/^(viaggio|itinerario|vacanza|giorni|giorno|days|day|budget|euro|eur|€|per|di|dal|al|con|weekend|stile)$/i.test(
+          w
+        ) && !/^\d+$/.test(w)
+    );
+
+  if (words.length > 0 && words[0] && words[0].length >= 2) {
+    const cand = words[0];
+    return cand.charAt(0).toUpperCase() + cand.slice(1);
+  }
+
+  return "Destinazione";
 }
 
 function buildDateRange(startDate?: string, endDate?: string, durationDays?: number): string[] {
@@ -55,11 +138,11 @@ function buildCityPlan(destination: string, durationDays: number): string[] {
   }
 
   if (lower.includes("paris") || lower.includes("parigi")) {
-    return Array.from({ length: durationDays }, () => "Paris");
+    return Array.from({ length: durationDays }, () => "Parigi");
   }
 
   if (lower.includes("rome") || lower.includes("roma")) {
-    return Array.from({ length: durationDays }, () => "Rome");
+    return Array.from({ length: durationDays }, () => "Roma");
   }
 
   if (lower.includes("bali")) {
@@ -130,9 +213,78 @@ function buildHotelOptions(
   ];
 }
 
+function getCityActivityTitle(city: string, dayIndex: number): string {
+  const lower = city.toLowerCase();
+
+  if (lower.includes("avignon") || lower.includes("avignone")) {
+    const titles = [
+      "Palais des Papes & Centro Storico",
+      "Pont d'Avignon & Rocher des Doms",
+      "Marché Les Halles & Rue des Teinturiers",
+      "Musée Petit Palais & Passeggiata sul Rodano",
+      "Escursione al Pont du Gard e dintorni",
+    ];
+    return titles[dayIndex % titles.length] ?? `Scoperte nel centro di ${city}`;
+  }
+
+  if (lower.includes("tokyo")) {
+    const titles = [
+      "Shibuya & Tokyo Tower",
+      "Senso-ji e quartiere Asakusa",
+      "Harajuku e Meiji Jingu",
+      "Akihabara e Ginza",
+    ];
+    return titles[dayIndex % titles.length] ?? `Esplorando ${city}`;
+  }
+
+  if (lower.includes("kyoto")) {
+    const titles = [
+      "Fushimi Inari e Gion",
+      "Kinkaku-ji e Arashiyama",
+      "Kiyomizu-dera e Pontocho",
+    ];
+    return titles[dayIndex % titles.length] ?? `Templi di ${city}`;
+  }
+
+  if (lower.includes("paris") || lower.includes("parigi")) {
+    const titles = [
+      "Torre Eiffel e Champ de Mars",
+      "Museo del Louvre e Tuileries",
+      "Montmartre e Sacré-Cœur",
+      "Marais e Passeggiata sulla Senna",
+    ];
+    return titles[dayIndex % titles.length] ?? `Meraviglie di ${city}`;
+  }
+
+  if (lower.includes("rome") || lower.includes("roma")) {
+    const titles = [
+      "Colosseo e Fori Imperiali",
+      "Piazza di Spagna e Fontana di Trevi",
+      "Vaticano e Musei Vaticani",
+      "Trastevere e Pantheon",
+    ];
+    return titles[dayIndex % titles.length] ?? `Monumenti di ${city}`;
+  }
+
+  const genericTitles = [
+    `Centro storico e monumenti di ${city}`,
+    `Quartieri storici e musei principali di ${city}`,
+    `Mercati tipici e passeggiata panoramica a ${city}`,
+    `Cultura e parchi cittadini di ${city}`,
+    `Scoperte ed esperienze locali a ${city}`,
+  ];
+  return genericTitles[dayIndex % genericTitles.length] ?? `Attrazioni principali a ${city}`;
+}
+
 export function createMockTrip(
   prompt: string,
-  options?: { startDate?: string; endDate?: string; budget?: number; currency?: string }
+  options?: {
+    destination?: string;
+    startDate?: string;
+    endDate?: string;
+    budget?: number;
+    currency?: string;
+  }
 ): Trip {
   const derivedDurationFromDates =
     options?.startDate && options?.endDate
@@ -148,7 +300,7 @@ export function createMockTrip(
 
   const durationDays = derivedDurationFromDates ?? extractDays(prompt);
   const totalBudget = options?.budget ?? extractBudget(prompt);
-  const destination = extractDestination(prompt);
+  const destination = extractDestination(prompt, options?.destination);
   const currency = options?.currency ?? "EUR";
   const now = new Date().toISOString();
   const dayDates = buildDateRange(options?.startDate, options?.endDate, durationDays);
@@ -198,18 +350,7 @@ export function createMockTrip(
         {
           id: `act-${i + 1}-2`,
           time: "11:00",
-          title:
-            city === "Tokyo"
-              ? "Shibuya & Tokyo Tower"
-              : city === "Kyoto"
-              ? "Templi e quartiere storico"
-              : city === "Osaka"
-              ? "Castello di Osaka e Dotonbori"
-              : city === "Paris"
-              ? "Passeggiata tra Marais e Senna"
-              : city === "Rome"
-              ? "Centro storico e monumenti iconici"
-              : `Centro storico di ${city}`,
+          title: getCityActivityTitle(city, i),
           description: `Tappe principali consigliate per scoprire il meglio di ${city}.`,
           category: "SIGHTSEEING" as const,
           estimatedCost: 30,

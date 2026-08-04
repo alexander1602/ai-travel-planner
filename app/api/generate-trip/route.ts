@@ -6,6 +6,7 @@ import { isAIConfigured } from "@/lib/config";
 
 const bodySchema = z.object({
   prompt: z.string().min(3, "Descrivi il tuo viaggio con almeno qualche parola."),
+  destination: z.string().optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
   budget: z.number().positive().optional(),
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest) {
 
     const trip = await generateTrip({
       prompt: parsed.data.prompt,
+      destination: parsed.data.destination,
       startDate: parsed.data.startDate,
       endDate: parsed.data.endDate,
       budget: parsed.data.budget,

@@ -108,6 +108,8 @@ const KNOWN_CITIES: Record<string, { lat: number; lng: number }> = {
   ireland: { lat: 53.4129, lng: -8.2439 },
 
   // Europa Centrale e Meridionale
+  avignone: { lat: 43.9493, lng: 4.8055 },
+  avignon: { lat: 43.9493, lng: 4.8055 },
   paris: { lat: 48.8566, lng: 2.3522 },
   parigi: { lat: 48.8566, lng: 2.3522 },
   nice: { lat: 43.7102, lng: 7.262 },

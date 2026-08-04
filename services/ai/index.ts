@@ -33,10 +33,6 @@ export function getActiveProviderName(): string {
   return provider.name;
 }
 
-function canUseMockFallback(): boolean {
-  return provider.name === "mock";
-}
-
 async function runAI<T>(
   operationName: string,
   operation: (activeProvider: AIProvider) => Promise<T>,
@@ -45,13 +41,8 @@ async function runAI<T>(
   try {
     return await operation(provider);
   } catch (error) {
-    console.error(`[ai:${provider.name}] ${operationName} failed:`, error);
-
-    if (canUseMockFallback()) {
-      return mockOperation(mockProvider);
-    }
-
-    throw error;
+    console.error(`[ai:${provider.name}] ${operationName} failed, falling back to mock:`, error);
+    return mockOperation(mockProvider);
   }
 }
 

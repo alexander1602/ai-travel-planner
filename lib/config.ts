@@ -38,7 +38,7 @@ export const appConfig = {
     },
     gemini: {
       apiKey: readEnv("GEMINI_API_KEY"),
-      model: readEnv("GEMINI_MODEL") || "gemini-3.5-flash-lite",
+      model: readEnv("GEMINI_MODEL") || "gemini-1.5-flash",
     },
   },
   maps: {

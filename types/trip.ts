@@ -94,6 +94,7 @@ export interface ChatMessage {
 
 export interface GenerateTripInput {
   prompt: string;
+  destination?: string;
   startDate?: string;
   endDate?: string;
   budget?: number;

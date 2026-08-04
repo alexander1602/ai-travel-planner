@@ -7,6 +7,7 @@ import type { Trip } from "@/types/trip";
 interface UseGenerateTripResult {
   generate: (input: {
     prompt: string;
+    destination?: string;
     startDate?: string;
     endDate?: string;
     budget?: number;

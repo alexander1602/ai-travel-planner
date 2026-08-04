@@ -151,6 +151,7 @@ export function Hero() {
 
     const trip = await generate({
       prompt: fullPrompt,
+      destination: destination.trim(),
       startDate: effectiveType === "DATES" ? startDate || undefined : undefined,
       endDate: effectiveType === "DATES" ? endDate || undefined : undefined,
       budget: budget ? Number(budget) : undefined,

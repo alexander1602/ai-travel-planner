@@ -16,6 +16,7 @@ export class MockProvider implements AIProvider {
 
   async generateTrip(input: GenerateTripInput): Promise<Trip> {
     return createMockTrip(input.prompt, {
+      destination: input.destination,
       startDate: input.startDate,
       endDate: input.endDate,
       budget: input.budget,
