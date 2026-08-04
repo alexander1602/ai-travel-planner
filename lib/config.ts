@@ -10,8 +10,11 @@ function readEnv(name: string): string {
 
 function resolveAIProvider(): AIProviderName {
   const configured = readEnv("AI_PROVIDER").toLowerCase();
-  const hasOpenAIKey = Boolean(readEnv("OPENAI_API_KEY"));
-  const hasGeminiKey = Boolean(readEnv("GEMINI_API_KEY"));
+  const openAIKey = readEnv("OPENAI_API_KEY");
+  const geminiKey = readEnv("GEMINI_API_KEY");
+
+  const hasOpenAIKey = Boolean(openAIKey) && openAIKey.length > 15;
+  const hasGeminiKey = Boolean(geminiKey) && geminiKey.length > 15;
 
   if (configured === "mock") return "mock";
   if (configured === "openai" && hasOpenAIKey) return "openai";
@@ -38,7 +41,7 @@ export const appConfig = {
     },
     gemini: {
       apiKey: readEnv("GEMINI_API_KEY"),
-      model: readEnv("GEMINI_MODEL") || "gemini-1.5-flash",
+      model: readEnv("GEMINI_MODEL") || "gemini-3.5-flash-lite",
     },
   },
   maps: {

@@ -93,7 +93,9 @@ export function OpenStreetMap({ trip, selectedDayNumber, interactive = true }: O
   // Geocodifica dinamica in background delle città non in lista statica
   useEffect(() => {
     let isMounted = true;
-    const cities = Array.from(new Set(trip.days.map((d) => d.city)));
+    const cities = Array.from(
+      new Set([...trip.days.map((d) => d.city), trip.destination].filter(Boolean))
+    );
 
     async function fetchDynamicCoords() {
       const results: Record<string, { lat: number; lng: number }> = {};
