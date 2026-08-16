@@ -56,6 +56,37 @@ export interface TripDay {
   activities: Activity[];
 }
 
+export type DateSearchMode = "EXACT_DATES" | "FLEXIBLE_MONTH";
+
+export interface FlightSearchParams {
+  origin: string;
+  destination: string;
+  searchMode: DateSearchMode;
+  startDate?: string;
+  endDate?: string;
+  targetMonth?: string;
+  tripDurationDays?: number;
+}
+
+export interface FlightOption {
+  id: string;
+  airline: string;
+  airlineLogo?: string;
+  flightNumber?: string;
+  departureAirport: string;
+  arrivalAirport: string;
+  departureDate?: string;
+  returnDate?: string;
+  departureTime: string;
+  arrivalTime: string;
+  duration: string;
+  stops: number;
+  price: number;
+  currency: string;
+  isCheapestInMonth?: boolean;
+  bookingUrl: string;
+}
+
 export type TripStatus = "DRAFT" | "GENERATING" | "READY" | "ARCHIVED";
 
 export interface BudgetBreakdown {
@@ -64,12 +95,16 @@ export interface BudgetBreakdown {
   food: number;
   activities: number;
   extra: number;
+  flight?: number;
 }
 
 export interface Trip {
   id: string;
   title: string;
   destination: string;
+  destinationIataCode?: string;
+  originCity?: string;
+  originIataCode?: string;
   durationDays: number;
   startDate?: string;
   endDate?: string;
@@ -79,6 +114,8 @@ export interface Trip {
   status: TripStatus;
   days: TripDay[];
   budgetBreakdown: BudgetBreakdown;
+  selectedFlight?: FlightOption;
+  flightOptions?: FlightOption[];
   createdAt: string;
   updatedAt: string;
 }
@@ -95,6 +132,7 @@ export interface ChatMessage {
 export interface GenerateTripInput {
   prompt: string;
   destination?: string;
+  originCity?: string;
   startDate?: string;
   endDate?: string;
   budget?: number;

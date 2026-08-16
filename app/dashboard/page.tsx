@@ -4,19 +4,19 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bot, Sparkles, X } from "lucide-react";
+import { Bot, Sparkles, X, Plane } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { ChatBox } from "@/components/chat/ChatBox";
 import { TripTimeline } from "@/components/trip/TripTimeline";
-import { BudgetCard } from "@/components/budget/BudgetCard";
-import { MapPanel } from "@/components/map/MapPanel";
 import { LoadingScreen } from "@/components/common/LoadingScreen";
 import { ActivityAlternativesModal } from "@/components/trip/ActivityAlternativesModal";
+import { FlightWidget } from "@/components/trip/FlightWidget";
 import type { Activity, ActivityAlternative, Trip } from "@/types/trip";
 
 export default function DashboardPage() {
   const [trip, setTrip] = useState<Trip | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeSidebarTab, setActiveSidebarTab] = useState<"flights" | "chat">("flights");
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
   const [selectedActivityForAlternatives, setSelectedActivityForAlternatives] = useState<{
     dayId: string;
@@ -78,47 +78,9 @@ export default function DashboardPage() {
       };
     });
 
-    const foodCost = updatedDays.reduce(
-      (acc, d) =>
-        acc +
-        d.activities
-          .filter((a) => a.category === "FOOD")
-          .reduce((sum, a) => sum + a.estimatedCost, 0),
-      0
-    );
-
-    const activitiesCost = updatedDays.reduce(
-      (acc, d) =>
-        acc +
-        d.activities
-          .filter(
-            (a) =>
-              a.category === "SIGHTSEEING" ||
-              a.category === "ACTIVITY" ||
-              a.category === "SHOPPING"
-          )
-          .reduce((sum, a) => sum + a.estimatedCost, 0),
-      0
-    );
-
-    const transportCost = updatedDays.reduce(
-      (acc, d) =>
-        acc +
-        d.activities
-          .filter((a) => a.category === "TRANSPORT")
-          .reduce((sum, a) => sum + a.estimatedCost, 0),
-      0
-    );
-
     const updatedTrip: Trip = {
       ...trip,
       days: updatedDays,
-      budgetBreakdown: {
-        ...trip.budgetBreakdown,
-        food: foodCost,
-        activities: activitiesCost,
-        transport: transportCost,
-      },
       updatedAt: new Date().toISOString(),
     };
 
@@ -163,9 +125,9 @@ export default function DashboardPage() {
   return (
     <div className="flex min-h-screen flex-col relative">
       <Navbar />
-      <main className="mx-auto grid w-full max-w-[1400px] flex-1 grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-[1.5fr_1fr]">
+      <main className="mx-auto grid w-full max-w-[1400px] flex-1 grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-12">
         {/* Timeline principale */}
-        <section aria-label="Timeline del viaggio" className="min-w-0">
+        <section aria-label="Timeline del viaggio" className="min-w-0 lg:col-span-8">
           <header className="mb-4">
             <h1 className="text-2xl font-semibold">{trip.title}</h1>
             <p className="text-sm text-muted-foreground">
@@ -180,16 +142,43 @@ export default function DashboardPage() {
           />
         </section>
 
-        {/* Budget e Mappa */}
-        <section aria-label="Budget e mappa" className="space-y-6 lg:sticky lg:top-24">
-          <BudgetCard
-            totalBudget={trip.totalBudget}
-            currency={trip.currency}
-            breakdown={trip.budgetBreakdown}
-          />
-          <div className="h-64 sm:h-80 lg:h-[380px]">
-            <MapPanel trip={trip} />
+        {/* Sidebar — 2a Colonna: Voli & Trip Assistant */}
+        <section aria-label="Supporto viaggio" className="space-y-4 lg:col-span-4 lg:sticky lg:top-24 lg:self-start">
+          {/* Tab Selector Desktop */}
+          <div className="flex rounded-xl bg-muted/60 p-1 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setActiveSidebarTab("flights")}
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 transition-all cursor-pointer ${
+                activeSidebarTab === "flights"
+                  ? "bg-background text-foreground shadow-xs ring-1 ring-primary/20"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Plane className="h-3.5 w-3.5 text-primary" />
+              <span>Ricerca Voli</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSidebarTab("chat")}
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 transition-all cursor-pointer ${
+                activeSidebarTab === "chat"
+                  ? "bg-background text-foreground shadow-xs ring-1 ring-primary/20"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Bot className="h-3.5 w-3.5 text-primary" />
+              <span>Trip Assistant</span>
+            </button>
           </div>
+
+          {activeSidebarTab === "flights" ? (
+            <FlightWidget trip={trip} />
+          ) : (
+            <div className="h-[620px]">
+              <ChatBox trip={trip} onTripUpdate={handleTripUpdate} />
+            </div>
+          )}
         </section>
       </main>
 
@@ -274,4 +263,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

@@ -18,7 +18,7 @@ import {
   buildActivityAlternativesPrompt,
 } from "./prompts";
 import { parseTripJson } from "@/utils/trip-parser";
-import { appConfig } from "@/lib/config";
+import { serverConfig } from "@/lib/config.server";
 
 export class OpenAIProvider implements AIProvider {
   readonly name = "openai";
@@ -31,7 +31,7 @@ export class OpenAIProvider implements AIProvider {
   async generateTrip(input: GenerateTripInput): Promise<Trip> {
     try {
       const completion = await this.client.chat.completions.create({
-        model: appConfig.ai.openai.model,
+        model: serverConfig.ai.openai.model,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: SYSTEM_PROMPT_TRIP_PLANNER },
@@ -56,7 +56,7 @@ export class OpenAIProvider implements AIProvider {
   async modifyTrip(input: ModifyTripInput): Promise<Trip> {
     try {
       const completion = await this.client.chat.completions.create({
-        model: appConfig.ai.openai.model,
+        model: serverConfig.ai.openai.model,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: SYSTEM_PROMPT_TRIP_PLANNER },
@@ -80,7 +80,7 @@ export class OpenAIProvider implements AIProvider {
   ): Promise<ChatTripResult> {
     try {
       const completion = await this.client.chat.completions.create({
-        model: appConfig.ai.openai.model,
+        model: serverConfig.ai.openai.model,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: buildCombinedChatSystemPrompt() },
@@ -129,7 +129,7 @@ export class OpenAIProvider implements AIProvider {
       );
 
       const completion = await this.client.chat.completions.create({
-        model: appConfig.ai.openai.model,
+        model: serverConfig.ai.openai.model,
         response_format: { type: "json_object" },
         messages: [{ role: "user", content: prompt }],
       });
@@ -154,6 +154,25 @@ export class OpenAIProvider implements AIProvider {
       }));
     } catch (error) {
       throw new AIProviderError("Failed to get activity alternatives via OpenAI", this.name, error);
+    }
+  }
+
+  async resolveIataCode(location: string): Promise<string> {
+    try {
+      const prompt = `Restituisci ESCLUSIVAMENTE il codice IATA a 3 lettere dell'aeroporto principale più vicino a "${location}". Rispondi SOLO con 3 lettere maiuscole. Esempi: "Roma" -> "FCO", "Bergamo" -> "BGY", "Zanzibar" -> "ZNZ".`;
+      const response = await this.client.chat.completions.create({
+        model: serverConfig.ai.openai.model,
+        messages: [
+          { role: "system", content: "Sei un esperto di aviazione civile. Rispondi solo ed esclusivamente con il codice IATA a 3 lettere maiuscole." },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.1,
+      });
+      const raw = response.choices[0]?.message?.content || "";
+      const match = raw.trim().match(/[A-Za-z]{3}/);
+      return match ? match[0].toUpperCase() : "FCO";
+    } catch (error) {
+      throw new AIProviderError("Failed to resolve IATA code via OpenAI", this.name, error);
     }
   }
 }

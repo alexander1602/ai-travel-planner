@@ -6,7 +6,7 @@ import type { AIProvider } from "./provider";
 import { OpenAIProvider } from "./openai";
 import { GeminiProvider } from "./gemini";
 import { MockProvider } from "./mock";
-import { appConfig } from "@/lib/config";
+import { serverConfig } from "@/lib/config.server";
 import type {
   Trip,
   ChatMessage,
@@ -16,11 +16,11 @@ import type {
 } from "@/types/trip";
 
 function createProvider(): AIProvider {
-  switch (appConfig.ai.provider) {
+  switch (serverConfig.ai.provider) {
     case "openai":
-      return new OpenAIProvider(appConfig.ai.openai.apiKey);
+      return new OpenAIProvider(serverConfig.ai.openai.apiKey);
     case "gemini":
-      return new GeminiProvider(appConfig.ai.gemini.apiKey);
+      return new GeminiProvider(serverConfig.ai.gemini.apiKey);
     default:
       return new MockProvider();
   }
@@ -41,7 +41,7 @@ async function runAI<T>(
   try {
     return await operation(provider);
   } catch (error) {
-    console.error(`[ai:${provider.name}] ${operationName} failed, falling back to mock:`, error);
+    console.error(`[ai:${provider.name}] ${operationName} failed, falling back to mock:`, error instanceof Error ? error.message.replace(/\?key=[^&\s]*/g, '?key=[REDACTED]') : 'Unknown error');
     return mockOperation(mockProvider);
   }
 }
@@ -83,5 +83,13 @@ export async function getActivityAlternatives(
     "getActivityAlternatives",
     (activeProvider) => activeProvider.getActivityAlternatives(trip, dayId, activityId),
     (fallbackProvider) => fallbackProvider.getActivityAlternatives(trip, dayId, activityId)
+  );
+}
+
+export async function resolveIataCode(location: string): Promise<string> {
+  return runAI(
+    "resolveIataCode",
+    (activeProvider) => activeProvider.resolveIataCode(location),
+    (fallbackProvider) => fallbackProvider.resolveIataCode(location)
   );
 }

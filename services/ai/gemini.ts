@@ -17,7 +17,7 @@ import {
   buildActivityAlternativesPrompt,
 } from "./prompts";
 import { parseTripJson } from "@/utils/trip-parser";
-import { appConfig } from "@/lib/config";
+import { serverConfig } from "@/lib/config.server";
 
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -28,7 +28,7 @@ async function callGemini(
   userPrompt: string,
   responseMimeType?: "application/json"
 ): Promise<string> {
-  const url = `${GEMINI_ENDPOINT}/${model}:generateContent?key=${apiKey}`;
+  const url = `${GEMINI_ENDPOINT}/${model}:generateContent`;
   const generationConfig = responseMimeType ? { responseMimeType } : undefined;
   let lastError: Error | null = null;
 
@@ -37,7 +37,10 @@ async function callGemini(
     try {
       const response = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: [{ role: "user", parts: [{ text: userPrompt }] }],
@@ -84,7 +87,7 @@ export class GeminiProvider implements AIProvider {
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
-    this.model = appConfig.ai.gemini.model;
+    this.model = serverConfig.ai.gemini.model;
   }
 
   async generateTrip(input: GenerateTripInput): Promise<Trip> {
@@ -200,6 +203,22 @@ export class GeminiProvider implements AIProvider {
       }));
     } catch (error) {
       throw new AIProviderError("Failed to get activity alternatives via Gemini", this.name, error);
+    }
+  }
+
+  async resolveIataCode(location: string): Promise<string> {
+    try {
+      const prompt = `Restituisci ESCLUSIVAMENTE il codice IATA a 3 lettere dell'aeroporto principale più vicino a "${location}". Rispondi SOLO ed ESCLUSIVAMENTE con il codice di 3 lettere maiuscole, senza altro testo o punteggiatura. Esempi: "Roma" -> "FCO", "Bergamo" -> "BGY", "Zanzibar" -> "ZNZ", "Corfù" -> "CFU", "Reykjavik" -> "KEF".`;
+      const raw = await callGemini(
+        this.apiKey,
+        this.model,
+        "Sei un assistente esperto di aviazione civile. Rispondi SOLO con 3 lettere maiuscole del codice IATA.",
+        prompt
+      );
+      const match = raw.trim().match(/[A-Za-z]{3}/);
+      return match ? match[0].toUpperCase() : "FCO";
+    } catch (error) {
+      throw new AIProviderError("Failed to resolve IATA code via Gemini", this.name, error);
     }
   }
 }

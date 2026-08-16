@@ -29,6 +29,8 @@ export interface AIProvider {
     dayId: string,
     activityId: string
   ): Promise<ActivityAlternative[]>;
+
+  resolveIataCode(location: string): Promise<string>;
 }
 
 export class AIProviderError extends Error {

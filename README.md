@@ -1,6 +1,6 @@
 # AI Travel Planner
 
-MVP professionale e scalabile per generare itinerari di viaggio con l'AI, con chat conversazionale, timeline drag & drop, budget tracking e mappa (placeholder pronto per Google Maps/Mapbox).
+MVP professionale e scalabile per generare itinerari di viaggio con l'AI, con chat conversazionale, timeline drag & drop, alternative alle attività e ricerca voli in tempo reale (Google Flights / Skyscanner).
 
 ## Stack
 
@@ -32,11 +32,10 @@ OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o-mini
 
 GEMINI_API_KEY=
-GEMINI_MODEL=gemini-1.5-flash
+GEMINI_MODEL=gemini-3.5-flash-lite
 
-NEXT_PUBLIC_MAPS_PROVIDER=placeholder  # "placeholder" | "google" | "mapbox"
-GOOGLE_MAPS_API_KEY=
-MAPBOX_TOKEN=
+FLIGHT_PROVIDER=mock      # "skyscanner" | "mock"
+SKYSCANNER_API_KEY=
 ```
 
 ## Cambiare provider AI
@@ -96,12 +95,10 @@ npx prisma studio  # esplora il DB
 ## Deploy in produzione
 
 1. **Database**: sostituire `DATABASE_URL` con una connection string PostgreSQL (es. Neon, Supabase, RDS). Cambiare `provider = "sqlite"` in `provider = "postgresql"` in `schema.prisma`.
-2. **Docker**: è previsto un `Dockerfile` multi-stage (build → runtime slim) e `docker-compose.yml` con servizio Postgres.
-3. **Vercel**: collegare il repo, impostare le env vars nel dashboard, build command `next build`.
-4. **Mappe**: impostare `NEXT_PUBLIC_MAPS_PROVIDER=google` o `mapbox` e la relativa chiave; `MapPanel` carica dinamicamente l'SDK corretto (`components/map/`).
-5. **Pagamenti/Booking**: gli slot `services/booking/` e `services/payments/stripe.ts` sono predisposti come stub con la stessa interfaccia a provider, pronti per essere implementati senza toccare i chiamanti.
-6. **Autenticazione**: struttura pronta per NextAuth.js (Auth.js) — modello `User` già presente in Prisma.
+2. **Vercel**: collegare il repo, impostare le variabili d'ambiente nel dashboard, build command `next build`.
+3. **Autenticazione**: struttura pronta per NextAuth.js (Auth.js) — modello `User` già presente in Prisma.
+4. **Voli in Produzione**: impostare `FLIGHT_PROVIDER=skyscanner` e la relativa chiave API RapidAPI / Skyscanner.
 
 ## Principi seguiti
 
-SOLID, Clean Architecture, separazione UI/servizi/dominio, zero `any`, componenti piccoli e riutilizzabili, gestione centralizzata di configurazione ed errori, fallback sicuri, accessibilità (ARIA, focus visibile, navigazione da tastiera), dark mode nativa via `next-themes`.
+SOLID, Clean Architecture, separazione UI/servizi/dominio, zero `any`, componenti piccoli e riutilizzabili, gestione centralizzata di configurazione ed errori, fallback sicuri, rate limiting e security headers, accessibilità (ARIA, focus visibile, navigazione da tastiera), dark mode nativa via `next-themes`.

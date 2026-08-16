@@ -99,6 +99,8 @@ const daySchema = z.object({
 const tripSchema = z.object({
   title: z.string().default("Viaggio personalizzato"),
   destination: z.string().default("Destinazione"),
+  destinationIataCode: z.string().optional(),
+  originIataCode: z.string().optional(),
   durationDays: safeNumber(1).transform((v) => Math.max(1, Math.round(v))),
   startDate: z.string().nullable().optional(),
   endDate: z.string().nullable().optional(),

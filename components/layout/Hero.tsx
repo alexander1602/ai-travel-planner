@@ -12,6 +12,7 @@ import {
   Compass,
   Loader2,
   MapPin,
+  Plane,
   Sparkles,
   SlidersHorizontal,
 } from "lucide-react";
@@ -69,10 +70,25 @@ const QUICK_TAGS = [
 
 const DAY_PRESETS = [3, 5, 7, 10, 14];
 
+const MONTH_OPTIONS = [
+  { value: "", label: "Qualsiasi mese (Flessibile)" },
+  { value: "2026-09", label: "Settembre 2026" },
+  { value: "2026-10", label: "Ottobre 2026" },
+  { value: "2026-11", label: "Novembre 2026" },
+  { value: "2026-12", label: "Dicembre 2026" },
+  { value: "2027-01", label: "Gennaio 2027" },
+  { value: "2027-02", label: "Febbraio 2027" },
+  { value: "2027-03", label: "Marzo 2027" },
+  { value: "2027-04", label: "Aprile 2027" },
+  { value: "2027-05", label: "Maggio 2027" },
+];
+
 export function Hero() {
+  const [originCity, setOriginCity] = useState("");
   const [destination, setDestination] = useState("");
   const [durationType, setDurationType] = useState<"DAYS" | "DATES" | null>(null);
   const [daysCount, setDaysCount] = useState<number>(7);
+  const [targetMonth, setTargetMonth] = useState<string>("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [budget, setBudget] = useState("");
@@ -112,9 +128,11 @@ export function Hero() {
   }
 
   function applyExample(example: (typeof EXAMPLES)[number]) {
+    setOriginCity("");
     setDestination(example.destination);
     setDurationType(example.durationType);
     setDaysCount(example.daysCount);
+    setTargetMonth("");
     setBudget(example.budget);
     setSelectedTags(example.tags);
     setExtraDetails(example.extra);
@@ -128,11 +146,20 @@ export function Hero() {
 
     const parts: string[] = [];
     parts.push(`Viaggio a ${destination.trim()}`);
+    if (originCity.trim()) {
+      parts.push(`Partenza da ${originCity.trim()}`);
+    }
 
     if (effectiveType === "DATES" && startDate && endDate) {
       parts.push(`dal ${startDate} al ${endDate} (${activeDurationDays} giorni)`);
     } else {
       parts.push(`di ${activeDurationDays} giorni`);
+      if (targetMonth) {
+        const found = MONTH_OPTIONS.find((m) => m.value === targetMonth);
+        if (found) {
+          parts.push(`indicativamente nel mese di ${found.label}`);
+        }
+      }
     }
 
     if (budget.trim()) {
@@ -152,6 +179,7 @@ export function Hero() {
     const trip = await generate({
       prompt: fullPrompt,
       destination: destination.trim(),
+      originCity: originCity.trim() || undefined,
       startDate: effectiveType === "DATES" ? startDate || undefined : undefined,
       endDate: effectiveType === "DATES" ? endDate || undefined : undefined,
       budget: budget ? Number(budget) : undefined,
@@ -242,25 +270,47 @@ export function Hero() {
             transition={{ duration: 0.2 }}
             className="rounded-[1.5rem] border border-border/80 bg-card/90 p-4 sm:p-5 shadow-[0_20px_60px_-25px_rgba(0,0,0,0.25)] backdrop-blur-md space-y-4"
           >
-            {/* 1. DESTINAZIONE */}
-            <div className="space-y-1.5">
-              <label
-                htmlFor="destination-input"
-                className="flex items-center gap-1.5 text-[11px] font-bold text-foreground uppercase tracking-wider"
-              >
-                <MapPin className="h-3.5 w-3.5 text-primary" />
-                1. Destinazione
-              </label>
-              <div className="relative group">
-                <input
-                  id="destination-input"
-                  type="text"
-                  value={destination}
-                  onChange={(e) => setDestination(e.target.value)}
-                  placeholder="Dove vuoi andare? (es. Islanda, Giappone, Parigi, Sicilia...)"
-                  className="w-full rounded-xl border border-border/80 bg-background/80 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all group-hover:border-border"
-                  required
-                />
+            {/* 1. LUOGHI (PARTENZA & DESTINAZIONE) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="origin-input"
+                  className="flex items-center gap-1.5 text-[11px] font-bold text-foreground uppercase tracking-wider"
+                >
+                  <Plane className="h-3.5 w-3.5 text-primary" />
+                  Città di Partenza <span className="text-muted-foreground font-normal">(opzionale)</span>
+                </label>
+                <div className="relative group">
+                  <input
+                    id="origin-input"
+                    type="text"
+                    value={originCity}
+                    onChange={(e) => setOriginCity(e.target.value)}
+                    placeholder="Da dove parti? (es. Roma FCO, Milano MXP)"
+                    className="w-full rounded-xl border border-border/80 bg-background/80 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all group-hover:border-border"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="destination-input"
+                  className="flex items-center gap-1.5 text-[11px] font-bold text-foreground uppercase tracking-wider"
+                >
+                  <MapPin className="h-3.5 w-3.5 text-primary" />
+                  1. Destinazione
+                </label>
+                <div className="relative group">
+                  <input
+                    id="destination-input"
+                    type="text"
+                    value={destination}
+                    onChange={(e) => setDestination(e.target.value)}
+                    placeholder="Dove vuoi andare? (es. Islanda, Giappone...)"
+                    className="w-full rounded-xl border border-border/80 bg-background/80 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all group-hover:border-border"
+                    required
+                  />
+                </div>
               </div>
             </div>
 
@@ -274,117 +324,115 @@ export function Hero() {
                   transition={{ duration: 0.35, ease: "easeInOut" }}
                   className="space-y-4 overflow-hidden pt-1"
                 >
-                  {/* 2. DATE OPPURE DURATA */}
+                  {/* 2. DATE OPPURE DURATA & MESE FLESSIBILE */}
                   <div className="space-y-2.5 pt-2 border-t border-border/60">
                     <div className="flex items-center justify-between">
                       <label className="flex items-center gap-1.5 text-[11px] font-bold text-foreground uppercase tracking-wider">
                         <CalendarDays className="h-3.5 w-3.5 text-primary" />
-                        2. Date oppure Durata
+                        2. Quando vuoi viaggiare?
                       </label>
+                    </div>
 
-                      {durationType !== null && (
-                        <button
-                          type="button"
-                          onClick={() => setDurationType(null)}
-                          className="text-[11px] font-medium text-primary hover:underline transition-colors flex items-center gap-0.5"
-                        >
-                          ← Cambia modalità
-                        </button>
-                      )}
+                    {/* Tab Selector */}
+                    <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-muted/60 p-1 text-xs font-medium">
+                      <button
+                        type="button"
+                        onClick={() => setDurationType("DAYS")}
+                        className={`flex items-center justify-center gap-1.5 rounded-lg py-2 px-2 transition-all ${
+                          durationType !== "DATES"
+                            ? "bg-background text-foreground shadow-xs font-bold ring-1 ring-primary/20"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <span>✨ Mese Flessibile</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDurationType("DATES")}
+                        className={`flex items-center justify-center gap-1.5 rounded-lg py-2 px-2 transition-all ${
+                          durationType === "DATES"
+                            ? "bg-background text-foreground shadow-xs font-bold ring-1 ring-primary/20"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <span>📅 Date Specifiche</span>
+                      </button>
                     </div>
 
                     <AnimatePresence mode="wait">
-                      {durationType === null ? (
-                        /* 1. MOSTRA INIZIALMENTE SOLO LE DUE SCELTE PRINCIPALI */
-                        <motion.div
-                          key="choice-buttons"
-                          initial={{ opacity: 0, scale: 0.98, y: 4 }}
-                          animate={{ opacity: 1, scale: 1, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.98, y: -4 }}
-                          transition={{ duration: 0.2 }}
-                          className="grid grid-cols-1 sm:grid-cols-2 gap-2.5"
-                        >
-                          <motion.button
-                            type="button"
-                            whileHover={{ scale: 1.02, y: -1 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => setDurationType("DAYS")}
-                            className="flex items-center justify-center gap-2 rounded-xl py-3 px-3.5 text-xs font-semibold border border-border/80 bg-background text-foreground hover:border-primary hover:bg-primary/5 hover:text-primary transition-all shadow-xs"
-                          >
-                            <span>⏱️ Scegli quanti giorni</span>
-                          </motion.button>
-
-                          <motion.button
-                            type="button"
-                            whileHover={{ scale: 1.02, y: -1 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => setDurationType("DATES")}
-                            className="flex items-center justify-center gap-2 rounded-xl py-3 px-3.5 text-xs font-semibold border border-border/80 bg-background text-foreground hover:border-primary hover:bg-primary/5 hover:text-primary transition-all shadow-xs"
-                          >
-                            <span>📅 Seleziona date specifiche</span>
-                          </motion.button>
-                        </motion.div>
-                      ) : durationType === "DAYS" ? (
-                        /* 2. DOPO CLICK SU "QUANTI GIORNI": LE 2 SCELTE VENGONO SOSTITUITE DALLE PILLOLE DEI GIORNI */
+                      {durationType !== "DATES" ? (
+                        /* 1. MESE FLESSIBILE & DURATA GIORNI */
                         <motion.div
                           key="days-picker"
                           initial={{ opacity: 0, scale: 0.98, y: 4 }}
                           animate={{ opacity: 1, scale: 1, y: 0 }}
                           exit={{ opacity: 0, scale: 0.98, y: -4 }}
                           transition={{ duration: 0.2 }}
-                          className="space-y-2"
+                          className="space-y-3 pt-1"
                         >
-                          <div className="flex flex-wrap items-center gap-2">
-                            {DAY_PRESETS.map((num) => (
-                              <motion.button
-                                key={num}
-                                type="button"
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                onClick={() => setDaysCount(num)}
-                                className={`rounded-xl px-3.5 py-1.5 text-xs font-medium border transition-all ${
-                                  daysCount === num
-                                    ? "border-primary bg-primary/10 text-primary font-bold shadow-xs ring-1 ring-primary/30"
-                                    : "border-border/80 bg-background text-muted-foreground hover:border-foreground/40 hover:text-foreground"
-                                }`}
-                              >
-                                {num} giorni
-                              </motion.button>
-                            ))}
+                          <div>
+                            <span className="text-[11px] font-semibold text-muted-foreground block mb-1.5">
+                              Durata del viaggio:
+                            </span>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {DAY_PRESETS.map((num) => (
+                                <button
+                                  key={num}
+                                  type="button"
+                                  onClick={() => setDaysCount(num)}
+                                  className={`rounded-xl px-3.5 py-1.5 text-xs font-medium border transition-all ${
+                                    daysCount === num
+                                      ? "border-primary bg-primary/10 text-primary font-bold shadow-xs ring-1 ring-primary/30"
+                                      : "border-border/80 bg-background text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+                                  }`}
+                                >
+                                  {num} giorni
+                                </button>
+                              ))}
 
-                            <div className="flex items-center gap-1.5 rounded-xl border border-border/80 bg-background px-2.5 py-1 text-xs">
-                              <span className="text-muted-foreground text-[11px]">N° gg:</span>
-                              <input
-                                type="number"
-                                min="1"
-                                max="60"
-                                value={daysCount}
-                                onChange={(e) => setDaysCount(Math.max(1, parseInt(e.target.value) || 1))}
-                                className="w-10 bg-transparent text-center font-bold outline-none text-foreground text-xs"
-                              />
+                              <div className="flex items-center gap-1.5 rounded-xl border border-border/80 bg-background px-2.5 py-1 text-xs">
+                                <span className="text-muted-foreground text-[11px]">N° gg:</span>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="60"
+                                  value={daysCount}
+                                  onChange={(e) => setDaysCount(Math.max(1, parseInt(e.target.value) || 1))}
+                                  className="w-10 bg-transparent text-center font-bold outline-none text-foreground text-xs"
+                                />
+                              </div>
                             </div>
                           </div>
 
-                          <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-0.5">
-                            <span>Selezionati: <strong className="text-foreground">{daysCount} giorni</strong></span>
-                            <button
-                              type="button"
-                              onClick={() => setDurationType("DATES")}
-                              className="text-primary font-medium hover:underline"
+                          {/* SELETTORE MESE DI PARTENZA FLESSIBILE */}
+                          <div className="pt-2 border-t border-border/40 flex items-center justify-between gap-2 text-xs">
+                            <label htmlFor="target-month-select" className="text-muted-foreground font-semibold flex items-center gap-1 text-[11px]">
+                              <span>✨ Mese indicativo di partenza:</span>
+                            </label>
+                            <select
+                              id="target-month-select"
+                              value={targetMonth}
+                              onChange={(e) => setTargetMonth(e.target.value)}
+                              className="rounded-xl border border-border/80 bg-background px-3 py-1.5 text-xs text-foreground font-medium focus:border-primary focus:outline-none"
                             >
-                              📅 Preferisci date precise?
-                            </button>
+                              {MONTH_OPTIONS.map((m) => (
+                                <option key={m.value} value={m.value}>
+                                  {m.label}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                         </motion.div>
                       ) : (
-                        /* 3. DOPO CLICK SU "DATE SPECIFICHE": LE 2 SCELTE VENGONO SOSTITUITE DAI CAMPI DATA */
+                        /* 2. DATE SPECIFICHE */
                         <motion.div
                           key="dates-picker"
                           initial={{ opacity: 0, scale: 0.98, y: 4 }}
                           animate={{ opacity: 1, scale: 1, y: 0 }}
                           exit={{ opacity: 0, scale: 0.98, y: -4 }}
                           transition={{ duration: 0.2 }}
-                          className="space-y-2"
+                          className="space-y-2 pt-1"
                         >
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <label className="rounded-xl border border-border/80 bg-background p-2.5 transition-colors hover:border-primary/50">
@@ -414,17 +462,6 @@ export function Hero() {
                                 className="w-full bg-transparent text-xs text-foreground outline-none cursor-pointer"
                               />
                             </label>
-                          </div>
-
-                          <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-0.5">
-                            <span>{calculatedDaysFromDates ? `Durata calcolata: ${calculatedDaysFromDates} gg` : "Seleziona entrambe le date"}</span>
-                            <button
-                              type="button"
-                              onClick={() => setDurationType("DAYS")}
-                              className="text-primary font-medium hover:underline"
-                            >
-                              ⏱️ Preferisci indicare solo i giorni?
-                            </button>
                           </div>
                         </motion.div>
                       )}
@@ -618,10 +655,10 @@ export function Hero() {
           <motion.div whileHover={{ y: -2 }} className="py-4 sm:py-5 sm:px-6 text-left space-y-1">
             <div className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-foreground">
               <Sparkles className="h-4 w-4 text-primary shrink-0" />
-              3. Generazione & Mappa Live
+              3. Itinerario & Voli Diretti
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Ricevi subito itinerario, hotel selezionabili e mappa interattiva con punti collegati.
+              Ricevi subito itinerario giorno per giorno, alternative per ogni attività e ricerca voli in tempo reale.
             </p>
           </motion.div>
         </motion.div>

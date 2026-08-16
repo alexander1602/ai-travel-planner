@@ -151,8 +151,24 @@ export class MockProvider implements AIProvider {
         title: `Aperitivo & Lounge Bar nel centro di ${city}`,
         description: `Momento di relax con drink d'autore e tagliere di prodotti tipici.`,
         category: "FOOD",
-        estimatedCost: 18,
+        estimatedCost: 0,
       },
     ];
+  }
+
+  async resolveIataCode(location: string): Promise<string> {
+    const s = location.toLowerCase().trim();
+    if (s.includes("bergamo") || s.includes("bgy")) return "BGY";
+    if (s.includes("zanzibar") || s.includes("znz")) return "ZNZ";
+    if (s.includes("corfu") || s.includes("corfù") || s.includes("cfu")) return "CFU";
+    if (s.includes("islanda") || s.includes("iceland") || s.includes("reykjavik") || s.includes("kef")) return "KEF";
+    if (s.includes("giappone") || s.includes("japan") || s.includes("tokyo") || s.includes("tyo")) return "TYO";
+    if (s.includes("parigi") || s.includes("paris") || s.includes("cdg")) return "CDG";
+    if (s.includes("milano") || s.includes("mxp")) return "MXP";
+    if (s.includes("napoli") || s.includes("nap")) return "NAP";
+
+    const clean = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z]/g, "");
+    if (clean.length === 3) return clean.toUpperCase();
+    return "FCO";
   }
 }

@@ -8,6 +8,7 @@ interface UseGenerateTripResult {
   generate: (input: {
     prompt: string;
     destination?: string;
+    originCity?: string;
     startDate?: string;
     endDate?: string;
     budget?: number;
@@ -24,6 +25,8 @@ export function useGenerateTrip(): UseGenerateTripResult {
   const generate = useCallback(
     async (input: {
       prompt: string;
+      destination?: string;
+      originCity?: string;
       startDate?: string;
       endDate?: string;
       budget?: number;
