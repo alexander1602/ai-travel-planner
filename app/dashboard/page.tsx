@@ -11,6 +11,7 @@ import { TripTimeline } from "@/components/trip/TripTimeline";
 import { LoadingScreen } from "@/components/common/LoadingScreen";
 import { ActivityAlternativesModal } from "@/components/trip/ActivityAlternativesModal";
 import { FlightWidget } from "@/components/trip/FlightWidget";
+import { CalendarExportButton } from "@/components/trip/CalendarExportButton";
 import type { Activity, ActivityAlternative, Trip } from "@/types/trip";
 
 export default function DashboardPage() {
@@ -128,12 +129,17 @@ export default function DashboardPage() {
       <main className="mx-auto grid w-full max-w-[1400px] flex-1 grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-12">
         {/* Timeline principale */}
         <section aria-label="Timeline del viaggio" className="min-w-0 lg:col-span-8">
-          <header className="mb-4">
-            <h1 className="text-2xl font-semibold">{trip.title}</h1>
-            <p className="text-sm text-muted-foreground">
-              {trip.destination} · {trip.durationDays} giorni · {trip.totalBudget} {trip.currency}
-            </p>
-            {formattedRange && <p className="text-sm text-muted-foreground">{formattedRange}</p>}
+          <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold">{trip.title}</h1>
+              <p className="text-sm text-muted-foreground">
+                {trip.destination} · {trip.durationDays} giorni · {trip.totalBudget} {trip.currency}
+              </p>
+              {formattedRange && <p className="text-sm text-muted-foreground">{formattedRange}</p>}
+            </div>
+            <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+              <CalendarExportButton trip={trip} />
+            </div>
           </header>
           <TripTimeline
             trip={trip}
