@@ -286,6 +286,28 @@ export function createMockTrip(
     currency?: string;
   }
 ): Trip {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+
+  let effectiveStartDate = options?.startDate;
+  if (!effectiveStartDate) {
+    const futureDate = new Date(now);
+    futureDate.setDate(futureDate.getDate() + 14);
+    effectiveStartDate = futureDate.toISOString().slice(0, 10);
+  } else {
+    const match = effectiveStartDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match && match[1] && match[2] && match[3]) {
+      let y = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      const d = parseInt(match[3], 10);
+      if (y < currentYear || new Date(y, m - 1, d) < now) {
+        y = currentYear + (new Date(currentYear, m - 1, d) < now ? 1 : 0);
+        const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+        effectiveStartDate = `${y}-${pad(m)}-${pad(d)}`;
+      }
+    }
+  }
+
   const derivedDurationFromDates =
     options?.startDate && options?.endDate
       ? Math.max(
@@ -302,8 +324,8 @@ export function createMockTrip(
   const totalBudget = options?.budget ?? extractBudget(prompt);
   const destination = extractDestination(prompt, options?.destination);
   const currency = options?.currency ?? "EUR";
-  const now = new Date().toISOString();
-  const dayDates = buildDateRange(options?.startDate, options?.endDate, durationDays);
+  const nowISO = now.toISOString();
+  const dayDates = buildDateRange(effectiveStartDate, options?.endDate, durationDays);
   const cities = buildCityPlan(destination, durationDays);
 
   const days = Array.from({ length: durationDays }, (_, i) => {
@@ -374,7 +396,7 @@ export function createMockTrip(
     title: `${durationDays} giorni a ${destination}`,
     destination,
     durationDays,
-    startDate: options?.startDate,
+    startDate: effectiveStartDate,
     endDate: options?.endDate ?? dayDates[dayDates.length - 1],
     totalBudget,
     currency,
@@ -388,7 +410,7 @@ export function createMockTrip(
       activities: Math.round(totalBudget * 0.15),
       extra: Math.round(totalBudget * 0.1),
     },
-    createdAt: now,
-    updatedAt: now,
+    createdAt: nowISO,
+    updatedAt: nowISO,
   };
 }

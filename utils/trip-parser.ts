@@ -133,6 +133,78 @@ function extractJsonObject(raw: string): string {
   return withoutFence.slice(firstBrace, lastBrace + 1);
 }
 
+function sanitizeTripDates(
+  startDateRaw?: string | null,
+  endDateRaw?: string | null,
+  daysRaw: Array<{ dayNumber: number; date?: string | null }> = []
+): { startDate?: string; endDate?: string; dayDates: (string | undefined)[] } {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const currentYear = now.getFullYear();
+
+  function fixSingleDate(dateStr?: string | null): string | undefined {
+    if (!dateStr) return undefined;
+    const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match || !match[1] || !match[2] || !match[3]) return undefined;
+
+    let year = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10);
+    const day = parseInt(match[3], 10);
+
+    // Se l'anno o la data è nel passato rispetto a oggi, sposta all'anno corrente o successivo
+    if (year < currentYear) {
+      year = currentYear;
+      const candidate = new Date(year, month - 1, day, 0, 0, 0);
+      if (candidate < now) {
+        year = currentYear + 1;
+      }
+    } else if (year === currentYear) {
+      const candidate = new Date(year, month - 1, day, 0, 0, 0);
+      if (candidate < now) {
+        year = currentYear + 1;
+      }
+    }
+
+    const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+    return `${year}-${pad(month)}-${pad(day)}`;
+  }
+
+  let startDate = fixSingleDate(startDateRaw);
+  let endDate = fixSingleDate(endDateRaw);
+
+  const dayDates = daysRaw.map((d) => fixSingleDate(d.date));
+
+  // Se startDate non era presente ma i giorni hanno date, prendi la prima
+  if (!startDate && dayDates.length > 0 && dayDates[0]) {
+    startDate = dayDates[0];
+  }
+
+  // Se abbiamo startDate, riempi le date mancanti dei giorni in modo sequenziale
+  if (startDate) {
+    const match = startDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match && match[1] && match[2] && match[3]) {
+      const base = new Date(parseInt(match[1], 10), parseInt(match[2], 10) - 1, parseInt(match[3], 10));
+      for (let i = 0; i < dayDates.length; i++) {
+        if (!dayDates[i]) {
+          const current = new Date(base);
+          current.setDate(base.getDate() + i);
+          const y = current.getFullYear();
+          const m = current.getMonth() + 1;
+          const d = current.getDate();
+          const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+          dayDates[i] = `${y}-${pad(m)}-${pad(d)}`;
+        }
+      }
+    }
+  }
+
+  if (!endDate && dayDates.length > 0 && dayDates[dayDates.length - 1]) {
+    endDate = dayDates[dayDates.length - 1];
+  }
+
+  return { startDate, endDate, dayDates };
+}
+
 export function parseTripJson(raw: string, originalPrompt: string): Trip {
   const cleaned = extractJsonObject(raw);
   const parsedJson: unknown = JSON.parse(cleaned);
@@ -144,14 +216,19 @@ export function parseTripJson(raw: string, originalPrompt: string): Trip {
 
   const data = result.data;
   const now = new Date().toISOString();
+  const { startDate, endDate, dayDates } = sanitizeTripDates(
+    data.startDate,
+    data.endDate,
+    data.days
+  );
 
   return {
     id: `trip-${Date.now()}`,
     title: data.title,
     destination: data.destination,
     durationDays: data.durationDays,
-    startDate: data.startDate ?? undefined,
-    endDate: data.endDate ?? undefined,
+    startDate,
+    endDate,
     totalBudget: data.totalBudget,
     currency: data.currency,
     prompt: originalPrompt,
@@ -160,7 +237,7 @@ export function parseTripJson(raw: string, originalPrompt: string): Trip {
     days: data.days.map((day, dIndex) => ({
       id: `day-${dIndex + 1}`,
       dayNumber: day.dayNumber,
-      date: day.date ?? undefined,
+      date: dayDates[dIndex],
       city: day.city,
       title: day.title,
       description: day.description,

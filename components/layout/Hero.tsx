@@ -1,7 +1,7 @@
 // components/layout/Hero.tsx
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, useMemo, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -35,7 +35,7 @@ const EXAMPLES = [
     daysCount: 10,
     budget: "2800",
     tags: ["🏰 Cultura & Storia", "🍜 Cibo & Gastronomia"],
-    extra: "Tappe tra Tokyo, Kyoto e Osaka, templi, cucina locale e Shinkansen.",
+    extra: "Tokyo, Kyoto, Osaka tra templi antichi, street food e treni shinkansen.",
   },
   {
     label: "Lisbona 🇵🇹",
@@ -70,18 +70,39 @@ const QUICK_TAGS = [
 
 const DAY_PRESETS = [3, 5, 7, 10, 14];
 
-const MONTH_OPTIONS = [
-  { value: "", label: "Qualsiasi mese (Flessibile)" },
-  { value: "2026-09", label: "Settembre 2026" },
-  { value: "2026-10", label: "Ottobre 2026" },
-  { value: "2026-11", label: "Novembre 2026" },
-  { value: "2026-12", label: "Dicembre 2026" },
-  { value: "2027-01", label: "Gennaio 2027" },
-  { value: "2027-02", label: "Febbraio 2027" },
-  { value: "2027-03", label: "Marzo 2027" },
-  { value: "2027-04", label: "Aprile 2027" },
-  { value: "2027-05", label: "Maggio 2027" },
-];
+function getMonthOptions(): Array<{ value: string; label: string }> {
+  const now = new Date();
+  const options: Array<{ value: string; label: string }> = [
+    { value: "", label: "Qualsiasi mese (Flessibile)" },
+  ];
+
+  const monthNames = [
+    "Gennaio",
+    "Febbraio",
+    "Marzo",
+    "Aprile",
+    "Maggio",
+    "Giugno",
+    "Luglio",
+    "Agosto",
+    "Settembre",
+    "Ottobre",
+    "Novembre",
+    "Dicembre",
+  ];
+
+  // Prossimi 12 mesi a partire dal mese corrente
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const val = `${year}-${month}`;
+    const label = `${monthNames[d.getMonth()]} ${year}`;
+    options.push({ value: val, label });
+  }
+
+  return options;
+}
 
 export function Hero() {
   const [originCity, setOriginCity] = useState("");
@@ -138,6 +159,8 @@ export function Hero() {
     setExtraDetails(example.extra);
   }
 
+  const monthOptions = useMemo(() => getMonthOptions(), []);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSubmit) return;
@@ -150,14 +173,28 @@ export function Hero() {
       parts.push(`Partenza da ${originCity.trim()}`);
     }
 
+    let computedStartDate: string | undefined = undefined;
+    let computedEndDate: string | undefined = undefined;
+
     if (effectiveType === "DATES" && startDate && endDate) {
       parts.push(`dal ${startDate} al ${endDate} (${activeDurationDays} giorni)`);
+      computedStartDate = startDate;
+      computedEndDate = endDate;
     } else {
       parts.push(`di ${activeDurationDays} giorni`);
       if (targetMonth) {
-        const found = MONTH_OPTIONS.find((m) => m.value === targetMonth);
+        const found = monthOptions.find((m) => m.value === targetMonth);
         if (found) {
           parts.push(`indicativamente nel mese di ${found.label}`);
+        }
+        const [y, m] = targetMonth.split("-").map(Number);
+        if (y && m) {
+          const start = new Date(y, m - 1, 1, 0, 0, 0);
+          const end = new Date(start);
+          end.setDate(start.getDate() + activeDurationDays - 1);
+          const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+          computedStartDate = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`;
+          computedEndDate = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`;
         }
       }
     }
@@ -180,8 +217,8 @@ export function Hero() {
       prompt: fullPrompt,
       destination: destination.trim(),
       originCity: originCity.trim() || undefined,
-      startDate: effectiveType === "DATES" ? startDate || undefined : undefined,
-      endDate: effectiveType === "DATES" ? endDate || undefined : undefined,
+      startDate: computedStartDate,
+      endDate: computedEndDate,
       budget: budget ? Number(budget) : undefined,
       currency: "EUR",
     });
@@ -416,7 +453,7 @@ export function Hero() {
                               onChange={(e) => setTargetMonth(e.target.value)}
                               className="rounded-xl border border-border/80 bg-background px-3 py-1.5 text-xs text-foreground font-medium focus:border-primary focus:outline-none"
                             >
-                              {MONTH_OPTIONS.map((m) => (
+                              {monthOptions.map((m) => (
                                 <option key={m.value} value={m.value}>
                                   {m.label}
                                 </option>

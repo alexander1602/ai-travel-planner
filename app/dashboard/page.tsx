@@ -16,7 +16,7 @@ import type { Activity, ActivityAlternative, Trip } from "@/types/trip";
 export default function DashboardPage() {
   const [trip, setTrip] = useState<Trip | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [selectedActivityForAlternatives, setSelectedActivityForAlternatives] = useState<{
     dayId: string;
     activity: Activity;
@@ -124,16 +124,16 @@ export default function DashboardPage() {
   return (
     <div className="flex min-h-screen flex-col relative">
       <Navbar />
-      <main className="mx-auto grid w-full max-w-[1400px] flex-1 grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-12">
-        {/* Timeline principale */}
-        <section aria-label="Timeline del viaggio" className="min-w-0 lg:col-span-8">
-          <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <main className="mx-auto w-full max-w-5xl flex-1 p-4 sm:p-6 lg:p-8">
+        {/* Timeline principale a larghezza intera */}
+        <section aria-label="Timeline del viaggio" className="w-full">
+          <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 pb-6">
             <div>
-              <h1 className="text-2xl font-semibold">{trip.title}</h1>
-              <p className="text-sm text-muted-foreground">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{trip.title}</h1>
+              <p className="text-sm text-muted-foreground mt-1">
                 {trip.destination} · {trip.durationDays} giorni · {trip.totalBudget} {trip.currency}
               </p>
-              {formattedRange && <p className="text-sm text-muted-foreground">{formattedRange}</p>}
+              {formattedRange && <p className="text-sm font-medium text-primary mt-1">{formattedRange}</p>}
             </div>
             <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
               <CalendarExportButton trip={trip} />
@@ -145,24 +145,18 @@ export default function DashboardPage() {
             onOpenAlternatives={handleOpenAlternatives}
           />
         </section>
-
-        {/* Sidebar — 2a Colonna: Trip Assistant */}
-        <section aria-label="Assistente di viaggio" className="hidden lg:block lg:col-span-4 lg:sticky lg:top-24 lg:self-start">
-          <div className="h-[calc(100vh-140px)] min-h-[550px] max-h-[750px]">
-            <ChatBox trip={trip} onTripUpdate={handleTripUpdate} />
-          </div>
-        </section>
       </main>
 
-      {/* PULSANTE FLOATING TRIP ASSISTANT (UNIVERSALE PC & MOBILE) */}
+      {/* PULSANTE FLOATING TRIP ASSISTANT */}
       <div className="fixed bottom-6 right-6 z-[9999]">
         <motion.button
           type="button"
-          onClick={() => setIsMobileChatOpen((prev) => !prev)}
+          onClick={() => setIsChatOpen((prev) => !prev)}
           whileHover={{ scale: 1.08 }}
           whileTap={{ scale: 0.92 }}
           className="relative flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_10px_30px_-5px_rgba(0,0,0,0.35)] ring-4 ring-primary/20 backdrop-blur-md transition-all cursor-pointer"
           aria-label="Apri Trip Assistant"
+          title="Apri l'assistente AI di viaggio"
         >
           <Bot className="h-6 w-6" />
           <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[9px] font-bold text-white ring-2 ring-background animate-pulse">
@@ -171,15 +165,15 @@ export default function DashboardPage() {
         </motion.button>
       </div>
 
-      {/* CASSELLA TRIP ASSISTANT A SCOMPARSA (DRAWER UNIVERSALE PC & MOBILE) */}
+      {/* CASSELLA TRIP ASSISTANT A SCOMPARSA (DRAWER) */}
       <AnimatePresence>
-        {isMobileChatOpen && (
+        {isChatOpen && (
           <div className="fixed inset-0 z-[99999] flex flex-col justify-end sm:justify-end sm:items-end p-0 sm:p-6 bg-black/40 backdrop-blur-xs">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setIsMobileChatOpen(false)}
+              onClick={() => setIsChatOpen(false)}
               className="fixed inset-0"
             />
 
@@ -188,7 +182,7 @@ export default function DashboardPage() {
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: "100%", opacity: 0 }}
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="relative z-10 flex h-[85vh] sm:h-[620px] w-full sm:w-[420px] flex-col rounded-t-[2rem] sm:rounded-2xl border border-border bg-card p-4 shadow-2xl"
+              className="relative z-10 flex h-[85vh] sm:h-[650px] w-full sm:w-[450px] flex-col rounded-t-[2rem] sm:rounded-2xl border border-border bg-card p-4 shadow-2xl"
             >
               {/* Header Assistente */}
               <div className="flex items-center justify-between border-b border-border/60 pb-3 mb-2 px-1">
@@ -207,7 +201,7 @@ export default function DashboardPage() {
 
                 <button
                   type="button"
-                  onClick={() => setIsMobileChatOpen(false)}
+                  onClick={() => setIsChatOpen(false)}
                   className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
                   aria-label="Chiudi Assistente"
                 >

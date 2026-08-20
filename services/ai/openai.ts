@@ -10,7 +10,7 @@ import type {
   ChatTripResult,
 } from "@/types/trip";
 import {
-  SYSTEM_PROMPT_TRIP_PLANNER,
+  getSystemPromptTripPlanner,
   buildGenerateTripPrompt,
   buildModifyTripPrompt,
   buildCombinedChatSystemPrompt,
@@ -34,7 +34,7 @@ export class OpenAIProvider implements AIProvider {
         model: serverConfig.ai.openai.model,
         response_format: { type: "json_object" },
         messages: [
-          { role: "system", content: SYSTEM_PROMPT_TRIP_PLANNER },
+          { role: "system", content: getSystemPromptTripPlanner() },
           {
             role: "user",
             content: buildGenerateTripPrompt(input.prompt, {
@@ -59,7 +59,7 @@ export class OpenAIProvider implements AIProvider {
         model: serverConfig.ai.openai.model,
         response_format: { type: "json_object" },
         messages: [
-          { role: "system", content: SYSTEM_PROMPT_TRIP_PLANNER },
+          { role: "system", content: getSystemPromptTripPlanner() },
           {
             role: "user",
             content: buildModifyTripPrompt(input.trip, input.instruction),

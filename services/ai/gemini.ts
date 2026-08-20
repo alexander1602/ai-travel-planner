@@ -9,7 +9,7 @@ import type {
   ChatTripResult,
 } from "@/types/trip";
 import {
-  SYSTEM_PROMPT_TRIP_PLANNER,
+  getSystemPromptTripPlanner,
   buildGenerateTripPrompt,
   buildModifyTripPrompt,
   buildCombinedChatSystemPrompt,
@@ -95,7 +95,7 @@ export class GeminiProvider implements AIProvider {
       const raw = await callGemini(
         this.apiKey,
         this.model,
-        SYSTEM_PROMPT_TRIP_PLANNER,
+        getSystemPromptTripPlanner(),
         buildGenerateTripPrompt(input.prompt, {
           startDate: input.startDate,
           endDate: input.endDate,
@@ -115,7 +115,7 @@ export class GeminiProvider implements AIProvider {
       const raw = await callGemini(
         this.apiKey,
         this.model,
-        SYSTEM_PROMPT_TRIP_PLANNER,
+        getSystemPromptTripPlanner(),
         buildModifyTripPrompt(input.trip, input.instruction),
         "application/json"
       );
