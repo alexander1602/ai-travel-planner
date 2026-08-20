@@ -11,6 +11,7 @@ import { TripTimeline } from "@/components/trip/TripTimeline";
 import { LoadingScreen } from "@/components/common/LoadingScreen";
 import { ActivityAlternativesModal } from "@/components/trip/ActivityAlternativesModal";
 import { CalendarExportButton } from "@/components/trip/CalendarExportButton";
+import { PdfExportButton } from "@/components/trip/PdfExportButton";
 import type { Activity, ActivityAlternative, Trip } from "@/types/trip";
 
 export default function DashboardPage() {
@@ -135,7 +136,8 @@ export default function DashboardPage() {
               </p>
               {formattedRange && <p className="text-sm font-medium text-primary mt-1">{formattedRange}</p>}
             </div>
-            <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+            <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-center shrink-0">
+              <PdfExportButton trip={trip} />
               <CalendarExportButton trip={trip} />
             </div>
           </header>
