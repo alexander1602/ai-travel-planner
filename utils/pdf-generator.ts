@@ -1,23 +1,23 @@
 // utils/pdf-generator.ts
-// Generatore client-side di Travel Guide in PDF elegante, stampabile e ad alta risoluzione (A4).
+// Generatore client-side di Travel Guide in PDF elegante, compatto, stampabile e ad alta risoluzione (A4).
 
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import type { Activity, ActivityCategory, Trip } from "@/types/trip";
 
 const CATEGORY_META: Record<ActivityCategory, { emoji: string; label: string; color: string; bg: string }> = {
-  SIGHTSEEING: { emoji: "🏛️", label: "Visita & Monumenti", color: "#4338ca", bg: "#e0e7ff" },
-  FOOD: { emoji: "🍽️", label: "Cibo & Ristorazione", color: "#be123c", bg: "#ffe4e6" },
-  TRANSPORT: { emoji: "🚗", label: "Trasporti & Spostamenti", color: "#0369a1", bg: "#e0f2fe" },
+  SIGHTSEEING: { emoji: "🏛️", label: "Monumenti & Visite", color: "#4338ca", bg: "#e0e7ff" },
+  FOOD: { emoji: "🍽️", label: "Cibo & Ristoranti", color: "#be123c", bg: "#ffe4e6" },
+  TRANSPORT: { emoji: "🚗", label: "Trasporti", color: "#0369a1", bg: "#e0f2fe" },
   ACCOMMODATION: { emoji: "🏨", label: "Alloggio & Hotel", color: "#0f766e", bg: "#ccfbf1" },
-  ACTIVITY: { emoji: "🎟️", label: "Esperienza & Attività", color: "#b45309", bg: "#fef3c7" },
+  ACTIVITY: { emoji: "🎟️", label: "Esperienza", color: "#b45309", bg: "#fef3c7" },
   SHOPPING: { emoji: "🛍️", label: "Shopping", color: "#be185d", bg: "#fce7f3" },
   NIGHTLIFE: { emoji: "🎉", label: "Vita Notturna", color: "#6d28d9", bg: "#ede9fe" },
-  WELLNESS: { emoji: "💆", label: "Benessere & Relax", color: "#047857", bg: "#d1fae5" },
+  WELLNESS: { emoji: "💆", label: "Relax & Wellness", color: "#047857", bg: "#d1fae5" },
   CULTURE: { emoji: "🎨", label: "Arte & Cultura", color: "#c2410c", bg: "#ffedd5" },
   ENTERTAINMENT: { emoji: "🍿", label: "Intrattenimento", color: "#4f46e5", bg: "#e0e7ff" },
   RELAX: { emoji: "☕", label: "Pausa Relax", color: "#4d7c0f", bg: "#ecfccb" },
-  OTHER: { emoji: "📍", label: "Altro", color: "#334155", bg: "#f1f5f9" },
+  OTHER: { emoji: "📍", label: "Tappa", color: "#334155", bg: "#f1f5f9" },
 };
 
 function sanitizeFilename(name: string): string {
@@ -67,82 +67,140 @@ function escapeHtml(str?: string): string {
 }
 
 /**
- * Organizza i giorni del viaggio in blocchi di pagine A4 per evitare overflow grafici.
+ * Calcolo dinamico dell'altezza stimata per ottimizzare la ripartizione dei fogli A4
  */
-interface PagePlan {
-  type: "cover" | "itinerary";
-  days?: {
-    day: Trip["days"][0];
-    activities: Activity[];
-    isContinuation?: boolean;
-    partIndex?: number;
-    totalParts?: number;
-  }[];
+const PAGE_HEIGHT_BUDGET = 960; // Pixel utili disponibili per pagina A4
+
+function calculateActivityHeight(act: Activity): number {
+  let h = 60; // altezza base card attività (titolo + orario + pillola)
+  if (act.description) {
+    const lines = Math.max(1, Math.ceil(act.description.length / 80));
+    h += lines * 16;
+  }
+  if (act.hotelOptions && act.hotelOptions.length > 0) {
+    h += 48; // spazio per card hotel associata
+  }
+  return h + 8; // margine inferiore
 }
 
+function calculateDayHeaderHeight(day: Trip["days"][0]): number {
+  let h = 50; // card header giorno
+  if (day.description) {
+    h += 22; // citazione descrizione
+  }
+  return h + 10;
+}
+
+interface PlannedDaySlice {
+  day: Trip["days"][0];
+  activities: Activity[];
+  isContinuation?: boolean;
+  partIndex?: number;
+  totalParts?: number;
+}
+
+interface PagePlan {
+  type: "cover" | "itinerary";
+  days?: PlannedDaySlice[];
+}
+
+/**
+ * Algoritmo di impaginazione dinamica che riempie interamente i fogli A4
+ * ed evita sprechi di spazio bianco o fogli mezzi vuoti.
+ */
 function planPages(trip: Trip): PagePlan[] {
   const pages: PagePlan[] = [];
 
-  // Pagina 1: Cover + Overview + Volo + Budget Breakdown
+  // Pagina 1: Cover + Overview + Dettagli Volo + Ripartizione Budget
   pages.push({ type: "cover" });
 
-  // Pagine successive: Itinerario giornaliero
-  // Ogni pagina A4 può contenere comodamente circa 3 attività dettagliate con descrizioni.
-  const MAX_ACTIVITIES_PER_PAGE = 3;
-
-  let currentDaysInPage: PagePlan["days"] = [];
-  let currentActivitiesCount = 0;
+  let currentPageDays: PlannedDaySlice[] = [];
+  let currentPageHeight = 0;
 
   for (const day of trip.days) {
-    const activities = day.activities || [];
+    const dayHeaderH = calculateDayHeaderHeight(day);
+    const acts = day.activities || [];
 
-    if (activities.length === 0) {
-      if (currentActivitiesCount + 1 > MAX_ACTIVITIES_PER_PAGE && currentDaysInPage && currentDaysInPage.length > 0) {
-        pages.push({ type: "itinerary", days: currentDaysInPage });
-        currentDaysInPage = [];
-        currentActivitiesCount = 0;
+    if (acts.length === 0) {
+      if (currentPageHeight + dayHeaderH > PAGE_HEIGHT_BUDGET && currentPageDays.length > 0) {
+        pages.push({ type: "itinerary", days: currentPageDays });
+        currentPageDays = [];
+        currentPageHeight = 0;
       }
-      currentDaysInPage.push({ day, activities: [] });
-      currentActivitiesCount += 1;
+      currentPageDays.push({ day, activities: [] });
+      currentPageHeight += dayHeaderH + 20;
       continue;
     }
 
-    if (activities.length <= MAX_ACTIVITIES_PER_PAGE) {
-      if (currentActivitiesCount + activities.length > MAX_ACTIVITIES_PER_PAGE && currentDaysInPage && currentDaysInPage.length > 0) {
-        pages.push({ type: "itinerary", days: currentDaysInPage });
-        currentDaysInPage = [];
-        currentActivitiesCount = 0;
-      }
-      currentDaysInPage.push({ day, activities });
-      currentActivitiesCount += activities.length;
-    } else {
-      if (currentDaysInPage && currentDaysInPage.length > 0) {
-        pages.push({ type: "itinerary", days: currentDaysInPage });
-        currentDaysInPage = [];
-        currentActivitiesCount = 0;
+    // Calcola l'altezza complessiva della giornata
+    const allActsH = acts.reduce((sum, act) => sum + calculateActivityHeight(act), 0);
+    const totalDayH = dayHeaderH + allActsH;
+
+    // Caso 1: L'intera giornata entra nello spazio rimanente del foglio corrente
+    if (currentPageHeight + totalDayH <= PAGE_HEIGHT_BUDGET) {
+      currentPageDays.push({ day, activities: acts });
+      currentPageHeight += totalDayH + 16;
+      continue;
+    }
+
+    // Caso 2: L'intera giornata non entra nella pagina corrente
+    // Se la pagina ha già contenuto, chiudila e inizia su una nuova pagina
+    if (currentPageDays.length > 0) {
+      pages.push({ type: "itinerary", days: currentPageDays });
+      currentPageDays = [];
+      currentPageHeight = 0;
+    }
+
+    // Se l'intera giornata entra in una pagina fresca da sola, aggiungila
+    if (totalDayH <= PAGE_HEIGHT_BUDGET) {
+      currentPageDays.push({ day, activities: acts });
+      currentPageHeight += totalDayH + 16;
+      continue;
+    }
+
+    // Caso 3: La giornata è estremamente lunga (es. 8+ attività) e richiede più pagine
+    let actIndex = 0;
+    const slices: { acts: Activity[]; isCont: boolean }[] = [];
+
+    while (actIndex < acts.length) {
+      const sliceActs: Activity[] = [];
+      let sliceH = calculateDayHeaderHeight(day);
+
+      while (actIndex < acts.length) {
+        const act = acts[actIndex];
+        if (!act) break;
+        const actH = calculateActivityHeight(act);
+        if (sliceActs.length > 0 && sliceH + actH > PAGE_HEIGHT_BUDGET) {
+          break;
+        }
+        sliceActs.push(act);
+        sliceH += actH;
+        actIndex++;
       }
 
-      const totalParts = Math.ceil(activities.length / MAX_ACTIVITIES_PER_PAGE);
-      for (let p = 0; p < totalParts; p++) {
-        const chunk = activities.slice(p * MAX_ACTIVITIES_PER_PAGE, (p + 1) * MAX_ACTIVITIES_PER_PAGE);
-        pages.push({
-          type: "itinerary",
-          days: [
-            {
-              day,
-              activities: chunk,
-              isContinuation: p > 0,
-              partIndex: p + 1,
-              totalParts,
-            },
-          ],
-        });
-      }
+      slices.push({ acts: sliceActs, isCont: slices.length > 0 });
     }
+
+    const totalParts = slices.length;
+    slices.forEach((s, idx) => {
+      if (idx > 0 && currentPageDays.length > 0) {
+        pages.push({ type: "itinerary", days: currentPageDays });
+        currentPageDays = [];
+        currentPageHeight = 0;
+      }
+      currentPageDays.push({
+        day,
+        activities: s.acts,
+        isContinuation: s.isCont,
+        partIndex: idx + 1,
+        totalParts: totalParts > 1 ? totalParts : undefined,
+      });
+      currentPageHeight = s.acts.reduce((sum, a) => sum + calculateActivityHeight(a), calculateDayHeaderHeight(day));
+    });
   }
 
-  if (currentDaysInPage && currentDaysInPage.length > 0) {
-    pages.push({ type: "itinerary", days: currentDaysInPage });
+  if (currentPageDays.length > 0) {
+    pages.push({ type: "itinerary", days: currentPageDays });
   }
 
   return pages;
@@ -167,150 +225,154 @@ function renderCoverPage(trip: Trip, pageNum: number, totalPages: number): strin
   const totalActivitiesCount = trip.days.reduce((acc, d) => acc + (d.activities?.length || 0), 0);
 
   return `
-    <div class="pdf-page" style="width: 794px; height: 1123px; max-height: 1123px; padding: 44px 48px; box-sizing: border-box; background: #ffffff; color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden;">
+    <div class="pdf-page" style="width: 794px; height: 1123px; max-height: 1123px; padding: 40px 44px; box-sizing: border-box; background: #ffffff; color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden;">
       
       <div>
         <!-- TOP BRAND HEADER -->
-        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #f1f5f9; padding-bottom: 16px; margin-bottom: 24px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #f1f5f9; padding-bottom: 14px; margin-bottom: 20px; box-sizing: border-box;">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #4f46e5, #06b6d4); display: flex; align-items: center; justify-content: center; color: #ffffff; font-weight: 800; font-size: 16px;">
+            <div style="width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #4f46e5, #06b6d4); display: flex; align-items: center; justify-content: center; color: #ffffff; font-weight: 800; font-size: 15px; line-height: 1;">
               ✈️
             </div>
             <div>
-              <div style="font-size: 14px; font-weight: 800; letter-spacing: 0.5px; color: #0f172a; text-transform: uppercase;">AI Travel Planner</div>
-              <div style="font-size: 10px; color: #64748b; font-weight: 500;">Guida Ufficiale di Viaggio</div>
+              <div style="font-size: 13px; font-weight: 800; letter-spacing: 0.5px; color: #0f172a; text-transform: uppercase; line-height: 1.2;">AI Travel Planner</div>
+              <div style="font-size: 10px; color: #64748b; font-weight: 500; line-height: 1.2;">Guida Ufficiale di Viaggio</div>
             </div>
           </div>
 
-          <div style="display: inline-flex; align-items: center; gap: 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 4px 12px;">
+          <div style="display: inline-flex; align-items: center; gap: 6px; height: 26px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 13px; padding: 0 12px; box-sizing: border-box;">
             <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #10b981;"></span>
-            <span style="font-size: 11px; font-weight: 600; color: #334155;">Itinerario Confermato</span>
+            <span style="font-size: 11px; font-weight: 600; color: #334155; line-height: 1;">Itinerario Confermato</span>
           </div>
         </div>
 
         <!-- HERO COVER CARD -->
-        <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%); border-radius: 18px; padding: 28px 32px; color: #ffffff; box-shadow: 0 10px 25px -5px rgba(49, 46, 129, 0.2); margin-bottom: 24px; position: relative;">
-          <div style="display: inline-block; background: rgba(255, 255, 255, 0.18); backdrop-filter: blur(8px); border-radius: 30px; padding: 4px 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">
-            📍 ${escapeHtml(trip.destination)}
+        <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%); border-radius: 16px; padding: 24px 28px; color: #ffffff; box-shadow: 0 10px 25px -5px rgba(49, 46, 129, 0.2); margin-bottom: 20px; position: relative; box-sizing: border-box;">
+          
+          <!-- DESTINATION BADGE CONCENTRATO E ALLINEATO PERFETTAMENTE -->
+          <div style="display: inline-flex; align-items: center; justify-content: center; height: 26px; background: rgba(255, 255, 255, 0.22); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 13px; padding: 0 12px; margin-bottom: 12px; box-sizing: border-box;">
+            <span style="font-size: 12px; line-height: 1; margin-right: 5px;">📍</span>
+            <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #ffffff; line-height: 1;">${escapeHtml(trip.destination)}</span>
           </div>
-          <h1 style="font-size: 26px; font-weight: 800; line-height: 1.25; margin: 0 0 10px 0; color: #ffffff;">
+
+          <h1 style="font-size: 24px; font-weight: 800; line-height: 1.25; margin: 0 0 8px 0; color: #ffffff;">
             ${escapeHtml(trip.title || `Viaggio a ${trip.destination}`)}
           </h1>
-          ${dateRangeStr ? `<div style="font-size: 13px; color: #cbd5e1; font-weight: 500; margin-bottom: 18px; display: flex; align-items: center; gap: 6px;">📅 ${escapeHtml(dateRangeStr)}</div>` : ""}
+          ${dateRangeStr ? `<div style="font-size: 12px; color: #cbd5e1; font-weight: 500; margin-bottom: 16px; display: flex; align-items: center; gap: 6px; line-height: 1.2;">📅 ${escapeHtml(dateRangeStr)}</div>` : ""}
           
           <!-- STATS ROW -->
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; border-top: 1px solid rgba(255, 255, 255, 0.15); padding-top: 16px;">
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; border-top: 1px solid rgba(255, 255, 255, 0.15); padding-top: 14px; box-sizing: border-box;">
             <div>
-              <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Durata</div>
-              <div style="font-size: 16px; font-weight: 700; color: #ffffff;">${trip.durationDays} Giorni</div>
+              <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 600; line-height: 1.2;">Durata</div>
+              <div style="font-size: 15px; font-weight: 700; color: #ffffff; line-height: 1.3; margin-top: 2px;">${trip.durationDays} Giorni</div>
             </div>
             <div>
-              <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Budget Totale</div>
-              <div style="font-size: 16px; font-weight: 700; color: #34d399;">${trip.totalBudget} ${escapeHtml(currency)}</div>
+              <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 600; line-height: 1.2;">Budget Totale</div>
+              <div style="font-size: 15px; font-weight: 700; color: #34d399; line-height: 1.3; margin-top: 2px;">${trip.totalBudget} ${escapeHtml(currency)}</div>
             </div>
             <div>
-              <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Esperienze</div>
-              <div style="font-size: 16px; font-weight: 700; color: #ffffff;">${totalActivitiesCount} Tappe</div>
+              <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 600; line-height: 1.2;">Esperienze</div>
+              <div style="font-size: 15px; font-weight: 700; color: #ffffff; line-height: 1.3; margin-top: 2px;">${totalActivitiesCount} Tappe</div>
             </div>
           </div>
         </div>
 
         <!-- FLIGHT DETAILS SECTION (SE PRESENTE) -->
         ${flight ? `
-          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px 20px; margin-bottom: 20px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 16px;">✈️</span>
-                <span style="font-size: 13px; font-weight: 700; color: #0f172a;">Dettagli Volo Selezionato</span>
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; box-sizing: border-box;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 15px; line-height: 1;">✈️</span>
+                <span style="font-size: 12px; font-weight: 700; color: #0f172a; line-height: 1;">Dettagli Volo Selezionato</span>
               </div>
-              <span style="font-size: 12px; font-weight: 700; color: #4338ca; background: #e0e7ff; padding: 2px 10px; border-radius: 20px;">
+              <div style="display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 10px; border-radius: 11px; background: #e0e7ff; color: #4338ca; font-size: 11px; font-weight: 700; line-height: 1; box-sizing: border-box;">
                 ${escapeHtml(flight.airline)} ${flight.flightNumber ? `· ${escapeHtml(flight.flightNumber)}` : ""}
-              </span>
+              </div>
             </div>
 
-            <div style="display: flex; align-items: center; justify-content: space-between; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 16px; box-sizing: border-box;">
               <div style="text-align: left;">
-                <div style="font-size: 18px; font-weight: 800; color: #0f172a;">${escapeHtml(flight.departureAirport)}</div>
-                <div style="font-size: 12px; font-weight: 600; color: #475569;">${escapeHtml(flight.departureTime)}</div>
-                ${flight.departureDate ? `<div style="font-size: 10px; color: #94a3b8;">${escapeHtml(flight.departureDate)}</div>` : ""}
+                <div style="font-size: 16px; font-weight: 800; color: #0f172a; line-height: 1.2;">${escapeHtml(flight.departureAirport)}</div>
+                <div style="font-size: 11px; font-weight: 600; color: #475569; line-height: 1.2; margin-top: 2px;">${escapeHtml(flight.departureTime)}</div>
+                ${flight.departureDate ? `<div style="font-size: 9.5px; color: #94a3b8; line-height: 1.2;">${escapeHtml(flight.departureDate)}</div>` : ""}
               </div>
 
-              <div style="display: flex; flex-direction: column; align-items: center; padding: 0 16px;">
-                <div style="font-size: 10px; font-weight: 600; color: #64748b;">${escapeHtml(flight.duration || "Volo Diretto")}</div>
-                <div style="width: 100px; height: 2px; background: #cbd5e1; position: relative; margin: 4px 0;">
-                  <div style="position: absolute; top: -5px; right: 45px; font-size: 10px;">✈</div>
+              <div style="display: flex; flex-direction: column; align-items: center; padding: 0 14px;">
+                <div style="font-size: 9.5px; font-weight: 600; color: #64748b; line-height: 1;">${escapeHtml(flight.duration || "Volo Diretto")}</div>
+                <div style="width: 90px; height: 2px; background: #cbd5e1; position: relative; margin: 4px 0;">
+                  <div style="position: absolute; top: -5px; right: 40px; font-size: 9px;">✈</div>
                 </div>
-                <div style="font-size: 9px; color: #94a3b8;">${flight.stops === 0 ? "Diretto" : `${flight.stops} Scalo`}</div>
+                <div style="font-size: 9px; color: #94a3b8; line-height: 1;">${flight.stops === 0 ? "Diretto" : `${flight.stops} Scalo`}</div>
               </div>
 
               <div style="text-align: right;">
-                <div style="font-size: 18px; font-weight: 800; color: #0f172a;">${escapeHtml(flight.arrivalAirport)}</div>
-                <div style="font-size: 12px; font-weight: 600; color: #475569;">${escapeHtml(flight.arrivalTime)}</div>
-                ${flight.returnDate ? `<div style="font-size: 10px; color: #94a3b8;">${escapeHtml(flight.returnDate)}</div>` : ""}
+                <div style="font-size: 16px; font-weight: 800; color: #0f172a; line-height: 1.2;">${escapeHtml(flight.arrivalAirport)}</div>
+                <div style="font-size: 11px; font-weight: 600; color: #475569; line-height: 1.2; margin-top: 2px;">${escapeHtml(flight.arrivalTime)}</div>
+                ${flight.returnDate ? `<div style="font-size: 9.5px; color: #94a3b8; line-height: 1.2;">${escapeHtml(flight.returnDate)}</div>` : ""}
               </div>
             </div>
           </div>
         ` : ""}
 
         <!-- BUDGET BREAKDOWN SECTION -->
-        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px 20px; margin-bottom: 20px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 16px;">📊</span>
-              <span style="font-size: 13px; font-weight: 700; color: #0f172a;">Ripartizione Stimata del Budget</span>
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; box-sizing: border-box;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 15px; line-height: 1;">📊</span>
+              <span style="font-size: 12px; font-weight: 700; color: #0f172a; line-height: 1;">Ripartizione Stimata del Budget</span>
             </div>
-            <span style="font-size: 11px; color: #64748b;">Totale: <strong>${trip.totalBudget} ${escapeHtml(currency)}</strong></span>
+            <span style="font-size: 11px; color: #64748b; line-height: 1;">Totale: <strong style="color: #0f172a;">${trip.totalBudget} ${escapeHtml(currency)}</strong></span>
           </div>
 
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
-            <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 10px; padding: 10px 12px;">
-              <div style="font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px;">🏨 Alloggio</div>
-              <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-top: 2px;">~${breakdown.hotel || 0} ${escapeHtml(currency)}</div>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+            <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 8px 10px; box-sizing: border-box;">
+              <div style="font-size: 10.5px; color: #64748b; display: flex; align-items: center; gap: 4px; line-height: 1.2;">🏨 Alloggio</div>
+              <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1.2;">~${breakdown.hotel || 0} ${escapeHtml(currency)}</div>
             </div>
-            <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 10px; padding: 10px 12px;">
-              <div style="font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px;">🍽️ Cibo & Bevande</div>
-              <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-top: 2px;">~${breakdown.food || 0} ${escapeHtml(currency)}</div>
+            <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 8px 10px; box-sizing: border-box;">
+              <div style="font-size: 10.5px; color: #64748b; display: flex; align-items: center; gap: 4px; line-height: 1.2;">🍽️ Cibo & Bevande</div>
+              <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1.2;">~${breakdown.food || 0} ${escapeHtml(currency)}</div>
             </div>
-            <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 10px; padding: 10px 12px;">
-              <div style="font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px;">🚗 Trasporti</div>
-              <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-top: 2px;">~${breakdown.transport || 0} ${escapeHtml(currency)}</div>
+            <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 8px 10px; box-sizing: border-box;">
+              <div style="font-size: 10.5px; color: #64748b; display: flex; align-items: center; gap: 4px; line-height: 1.2;">🚗 Trasporti</div>
+              <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1.2;">~${breakdown.transport || 0} ${escapeHtml(currency)}</div>
             </div>
-            <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 10px; padding: 10px 12px;">
-              <div style="font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px;">🎟️ Attività</div>
-              <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-top: 2px;">~${breakdown.activities || 0} ${escapeHtml(currency)}</div>
+            <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 8px 10px; box-sizing: border-box;">
+              <div style="font-size: 10.5px; color: #64748b; display: flex; align-items: center; gap: 4px; line-height: 1.2;">🎟️ Attività</div>
+              <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1.2;">~${breakdown.activities || 0} ${escapeHtml(currency)}</div>
             </div>
-            <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 10px; padding: 10px 12px;">
-              <div style="font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px;">🛍️ Extra & Svago</div>
-              <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-top: 2px;">~${breakdown.extra || 0} ${escapeHtml(currency)}</div>
+            <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 8px 10px; box-sizing: border-box;">
+              <div style="font-size: 10.5px; color: #64748b; display: flex; align-items: center; gap: 4px; line-height: 1.2;">🛍️ Extra & Svago</div>
+              <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1.2;">~${breakdown.extra || 0} ${escapeHtml(currency)}</div>
             </div>
             ${breakdown.flight ? `
-              <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 10px; padding: 10px 12px;">
-                <div style="font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px;">✈️ Volo</div>
-                <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-top: 2px;">~${breakdown.flight} ${escapeHtml(currency)}</div>
+              <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 8px 10px; box-sizing: border-box;">
+                <div style="font-size: 10.5px; color: #64748b; display: flex; align-items: center; gap: 4px; line-height: 1.2;">✈️ Volo</div>
+                <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1.2;">~${breakdown.flight} ${escapeHtml(currency)}</div>
               </div>
             ` : `
-              <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 10px; padding: 10px 12px;">
-                <div style="font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 4px;">🎯 Tappe Totali</div>
-                <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-top: 2px;">${trip.days.length} Giornate</div>
+              <div style="background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 8px 10px; box-sizing: border-box;">
+                <div style="font-size: 10.5px; color: #64748b; display: flex; align-items: center; gap: 4px; line-height: 1.2;">🎯 Tappe Totali</div>
+                <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1.2;">${trip.days.length} Giornate</div>
               </div>
             `}
           </div>
         </div>
 
         <!-- TRAVEL CHECKLIST / QUICK TIPS BOX -->
-        <div style="background: #eff6ff; border: 1px solid #dbeafe; border-radius: 12px; padding: 14px 18px;">
-          <div style="font-size: 12px; font-weight: 700; color: #1e40af; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+        <div style="background: #eff6ff; border: 1px solid #dbeafe; border-radius: 10px; padding: 12px 16px; box-sizing: border-box;">
+          <div style="font-size: 11.5px; font-weight: 700; color: #1e40af; margin-bottom: 4px; display: flex; align-items: center; gap: 5px; line-height: 1.2;">
             💡 Consigli Pratici per il Tuo Viaggio
           </div>
-          <div style="font-size: 11px; color: #3b82f6; line-height: 1.5;">
-            Salva questo documento PDF sul tuo smartphone per consultarlo offline. Ricordati di verificare documenti d'identità, orari di apertura dei monumenti e prenotazioni in loco.
+          <div style="font-size: 10.5px; color: #3b82f6; line-height: 1.45;">
+            Salva questo documento PDF sul tuo smartphone per consultarlo comodamente offline. Ricordati di verificare orari di apertura dei monumenti e prenotazioni in loco.
           </div>
         </div>
       </div>
 
       <!-- FOOTER -->
-      <div style="border-top: 1px solid #e2e8f0; padding-top: 12px; display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: #94a3b8;">
-        <div>AI Travel Planner · Guida generata automaticamente</div>
+      <div style="border-top: 1px solid #e2e8f0; padding-top: 10px; display: flex; align-items: center; justify-content: space-between; font-size: 9.5px; color: #94a3b8; box-sizing: border-box;">
+        <div>AI Travel Planner · Guida ufficiale di viaggio generata automaticamente</div>
         <div style="font-weight: 600;">Pagina ${pageNum} di ${totalPages}</div>
       </div>
     </div>
@@ -334,7 +396,7 @@ function renderItineraryPage(
       const formattedDate = formatDateIT(day.date);
 
       const continuationBadge = isContinuation && totalParts && partIndex
-        ? `<span style="font-size: 10px; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 10px; font-weight: 600; margin-left: 6px;">Parte ${partIndex}/${totalParts}</span>`
+        ? `<span style="display: inline-flex; align-items: center; justify-content: center; height: 18px; font-size: 9.5px; background: #e2e8f0; color: #475569; padding: 0 6px; border-radius: 9px; font-weight: 600; margin-left: 6px; line-height: 1; box-sizing: border-box;">Parte ${partIndex}/${totalParts}</span>`
         : "";
 
       const activitiesHtml = activities.length > 0
@@ -348,49 +410,51 @@ function renderItineraryPage(
               );
 
               return `
-                <div style="display: flex; gap: 14px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; position: relative;">
-                  <!-- TIME & CATEGORY PILL -->
-                  <div style="width: 110px; shrink: 0; display: flex; flex-direction: column; gap: 6px;">
-                    <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; color: #0f172a; background: #f8fafc; border: 1px solid #e2e8f0; padding: 3px 8px; border-radius: 6px;">
-                      ⏰ ${escapeHtml(act.time || "Orario Libero")}
+                <div style="display: flex; gap: 12px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; margin-bottom: 8px; box-sizing: border-box; align-items: flex-start;">
+                  
+                  <!-- TIME & CATEGORY COLUMN -->
+                  <div style="width: 115px; flex-shrink: 0; display: flex; flex-direction: column; gap: 5px; box-sizing: border-box;">
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 4px; height: 23px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; color: #0f172a; font-size: 11px; font-weight: 700; line-height: 1; box-sizing: border-box;">
+                      <span style="font-size: 11px; line-height: 1;">⏱</span>
+                      <span style="line-height: 1;">${escapeHtml(act.time || "Orario Libero")}</span>
                     </div>
-                    <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: ${meta.color}; background: ${meta.bg}; padding: 2px 6px; border-radius: 4px;">
-                      <span>${meta.emoji}</span>
-                      <span>${escapeHtml(meta.label)}</span>
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 4px; height: 21px; background: ${meta.bg}; color: ${meta.color}; border-radius: 5px; font-size: 9.5px; font-weight: 700; line-height: 1; padding: 0 4px; box-sizing: border-box; text-align: center;">
+                      <span style="font-size: 10px; line-height: 1;">${meta.emoji}</span>
+                      <span style="line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(meta.label)}</span>
                     </div>
                   </div>
 
-                  <!-- CONTENT -->
-                  <div style="flex: 1; min-width: 0;">
-                    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
-                      <h4 style="font-size: 14px; font-weight: 700; color: #0f172a; margin: 0 0 4px 0; line-height: 1.3;">
+                  <!-- CONTENT COLUMN -->
+                  <div style="flex: 1; min-width: 0; box-sizing: border-box;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px;">
+                      <h4 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0; line-height: 1.25;">
                         ${escapeHtml(act.title)}
                       </h4>
                       ${act.estimatedCost > 0 ? `
-                        <span style="font-size: 11px; font-weight: 700; color: #059669; background: #d1fae5; padding: 2px 8px; border-radius: 12px; white-space: nowrap;">
-                          ~${act.estimatedCost} ${escapeHtml(currency)}
-                        </span>
+                        <div style="display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 8px; border-radius: 11px; background: #d1fae5; color: #047857; font-size: 11px; font-weight: 700; line-height: 1; white-space: nowrap; box-sizing: border-box; flex-shrink: 0;">
+                          <span>~${act.estimatedCost} ${escapeHtml(currency)}</span>
+                        </div>
                       ` : `
-                        <span style="font-size: 10px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 2px 8px; border-radius: 12px; white-space: nowrap;">
-                          Gratuito
-                        </span>
+                        <div style="display: inline-flex; align-items: center; justify-content: center; height: 22px; padding: 0 8px; border-radius: 11px; background: #f1f5f9; color: #475569; font-size: 10px; font-weight: 600; line-height: 1; white-space: nowrap; box-sizing: border-box; flex-shrink: 0;">
+                          <span>Gratuito</span>
+                        </div>
                       `}
                     </div>
 
                     ${act.description ? `
-                      <p style="font-size: 11.5px; color: #475569; margin: 0 0 6px 0; line-height: 1.45;">
+                      <p style="font-size: 11px; color: #475569; margin: 0; line-height: 1.4;">
                         ${escapeHtml(act.description)}
                       </p>
                     ` : ""}
 
                     ${selectedHotel ? `
-                      <div style="background: #f0fdfa; border: 1px solid #ccfbf1; border-radius: 8px; padding: 8px 10px; margin-top: 6px; font-size: 11px; color: #0f766e;">
-                        <div style="font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                      <div style="background: #f0fdfa; border: 1px solid #ccfbf1; border-radius: 6px; padding: 6px 8px; margin-top: 6px; font-size: 10.5px; color: #0f766e; box-sizing: border-box;">
+                        <div style="font-weight: 700; display: flex; align-items: center; gap: 4px; line-height: 1.2;">
                           🏨 ${escapeHtml(selectedHotel.name)}
-                          ${selectedHotel.rating ? `<span style="color: #d97706; font-size: 10px;">★ ${selectedHotel.rating}</span>` : ""}
+                          ${selectedHotel.rating ? `<span style="color: #d97706; font-size: 9.5px;">★ ${selectedHotel.rating}</span>` : ""}
                         </div>
-                        ${selectedHotel.address ? `<div style="font-size: 10px; color: #115e59; margin-top: 2px;">📍 ${escapeHtml(selectedHotel.address)}</div>` : ""}
-                        ${selectedHotel.pricePerNight ? `<div style="font-size: 10px; font-weight: 600; margin-top: 2px;">Prezzo per notte: ~${selectedHotel.pricePerNight} ${escapeHtml(selectedHotel.currency || currency)}</div>` : ""}
+                        ${selectedHotel.address ? `<div style="font-size: 9.5px; color: #115e59; margin-top: 1px; line-height: 1.2;">📍 ${escapeHtml(selectedHotel.address)}</div>` : ""}
+                        ${selectedHotel.pricePerNight ? `<div style="font-size: 9.5px; font-weight: 600; margin-top: 1px; line-height: 1.2;">Prezzo: ~${selectedHotel.pricePerNight} ${escapeHtml(selectedHotel.currency || currency)}/notte</div>` : ""}
                       </div>
                     ` : ""}
                   </div>
@@ -399,41 +463,41 @@ function renderItineraryPage(
             })
             .join("")
         : `
-          <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 14px; text-align: center; font-size: 12px; color: #64748b; margin-bottom: 12px;">
+          <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 12px; text-align: center; font-size: 11px; color: #64748b; margin-bottom: 8px; box-sizing: border-box;">
             Nessuna attività programmata per questo orario. Giornata libera per esplorare in autonomia!
           </div>
         `;
 
       return `
-        <div style="margin-bottom: 20px;">
+        <div style="margin-bottom: 16px; box-sizing: border-box;">
           <!-- DAY CARD HEADER -->
-          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #4f46e5; border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
-            <div>
+          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #4f46e5; border-radius: 10px; padding: 8px 14px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box;">
+            <div style="display: flex; flex-direction: column; gap: 2px;">
               <div style="display: flex; align-items: center; gap: 6px;">
-                <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #4338ca; background: #e0e7ff; padding: 2px 8px; border-radius: 6px;">
+                <div style="display: inline-flex; align-items: center; justify-content: center; height: 20px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; color: #4338ca; background: #e0e7ff; padding: 0 7px; border-radius: 5px; line-height: 1; box-sizing: border-box;">
                   Giorno ${day.dayNumber}
-                </span>
+                </div>
                 ${continuationBadge}
-                <span style="font-size: 14px; font-weight: 700; color: #0f172a;">
+                <span style="font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.2;">
                   ${escapeHtml(day.title || `Giorno ${day.dayNumber}`)}
                 </span>
               </div>
-              <div style="font-size: 11px; color: #64748b; margin-top: 3px; display: flex; align-items: center; gap: 8px;">
+              <div style="font-size: 10px; color: #64748b; display: flex; align-items: center; gap: 8px; line-height: 1.2;">
                 ${day.city ? `<span>📍 ${escapeHtml(day.city)}</span>` : ""}
                 ${formattedDate ? `<span>📅 ${escapeHtml(formattedDate)}</span>` : ""}
               </div>
             </div>
 
             <div style="text-align: right;">
-              <div style="font-size: 10px; color: #64748b; text-transform: uppercase;">Spesa stimata</div>
-              <div style="font-size: 13px; font-weight: 700; color: #0f172a;">
+              <div style="font-size: 9px; color: #64748b; text-transform: uppercase; line-height: 1;">Spesa stimata</div>
+              <div style="font-size: 12px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1;">
                 ~${day.estimatedCost || 0} ${escapeHtml(currency)}
               </div>
             </div>
           </div>
 
           ${day.description && !isContinuation ? `
-            <div style="font-size: 11.5px; color: #475569; font-style: italic; margin-bottom: 10px; padding: 0 4px;">
+            <div style="font-size: 10.5px; color: #475569; font-style: italic; margin-bottom: 8px; padding: 0 4px; line-height: 1.35;">
               "${escapeHtml(day.description)}"
             </div>
           ` : ""}
@@ -448,16 +512,16 @@ function renderItineraryPage(
     .join("");
 
   return `
-    <div class="pdf-page" style="width: 794px; height: 1123px; max-height: 1123px; padding: 40px 48px; box-sizing: border-box; background: #ffffff; color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden;">
+    <div class="pdf-page" style="width: 794px; height: 1123px; max-height: 1123px; padding: 36px 44px; box-sizing: border-box; background: #ffffff; color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden;">
       
       <div>
         <!-- TOP RUNNING HEADER -->
-        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 20px;">
-          <div style="font-size: 11px; font-weight: 700; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 16px; box-sizing: border-box;">
+          <div style="font-size: 10.5px; font-weight: 700; color: #4f46e5; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px; line-height: 1;">
             <span>✈️</span>
             <span>${escapeHtml(trip.title || trip.destination)} · Itinerario Dettagliato</span>
           </div>
-          <div style="font-size: 10px; color: #94a3b8;">
+          <div style="font-size: 9.5px; color: #94a3b8; line-height: 1;">
             AI Travel Planner
           </div>
         </div>
@@ -469,7 +533,7 @@ function renderItineraryPage(
       </div>
 
       <!-- FOOTER -->
-      <div style="border-top: 1px solid #e2e8f0; padding-top: 12px; display: flex; align-items: center; justify-content: space-between; font-size: 10px; color: #94a3b8;">
+      <div style="border-top: 1px solid #e2e8f0; padding-top: 10px; display: flex; align-items: center; justify-content: space-between; font-size: 9.5px; color: #94a3b8; box-sizing: border-box;">
         <div>Guida ufficiale stampabile · ${escapeHtml(trip.destination)}</div>
         <div style="font-weight: 600;">Pagina ${pageNum} di ${totalPages}</div>
       </div>

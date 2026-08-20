@@ -12,7 +12,6 @@ import {
   Compass,
   Loader2,
   MapPin,
-  Plane,
   Sparkles,
   SlidersHorizontal,
 } from "lucide-react";
@@ -105,7 +104,6 @@ function getMonthOptions(): Array<{ value: string; label: string }> {
 }
 
 export function Hero() {
-  const [originCity, setOriginCity] = useState("");
   const [destination, setDestination] = useState("");
   const [durationType, setDurationType] = useState<"DAYS" | "DATES" | null>(null);
   const [daysCount, setDaysCount] = useState<number>(7);
@@ -149,7 +147,6 @@ export function Hero() {
   }
 
   function applyExample(example: (typeof EXAMPLES)[number]) {
-    setOriginCity("");
     setDestination(example.destination);
     setDurationType(example.durationType);
     setDaysCount(example.daysCount);
@@ -169,9 +166,6 @@ export function Hero() {
 
     const parts: string[] = [];
     parts.push(`Viaggio a ${destination.trim()}`);
-    if (originCity.trim()) {
-      parts.push(`Partenza da ${originCity.trim()}`);
-    }
 
     let computedStartDate: string | undefined = undefined;
     let computedEndDate: string | undefined = undefined;
@@ -216,7 +210,6 @@ export function Hero() {
     const trip = await generate({
       prompt: fullPrompt,
       destination: destination.trim(),
-      originCity: originCity.trim() || undefined,
       startDate: computedStartDate,
       endDate: computedEndDate,
       budget: budget ? Number(budget) : undefined,
@@ -307,47 +300,25 @@ export function Hero() {
             transition={{ duration: 0.2 }}
             className="rounded-[1.5rem] border border-border/80 bg-card/90 p-4 sm:p-5 shadow-[0_20px_60px_-25px_rgba(0,0,0,0.25)] backdrop-blur-md space-y-4"
           >
-            {/* 1. LUOGHI (PARTENZA & DESTINAZIONE) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="origin-input"
-                  className="flex items-center gap-1.5 text-[11px] font-bold text-foreground uppercase tracking-wider"
-                >
-                  <Plane className="h-3.5 w-3.5 text-primary" />
-                  Città di Partenza <span className="text-muted-foreground font-normal">(opzionale)</span>
-                </label>
-                <div className="relative group">
-                  <input
-                    id="origin-input"
-                    type="text"
-                    value={originCity}
-                    onChange={(e) => setOriginCity(e.target.value)}
-                    placeholder="Da dove parti? (es. Roma FCO, Milano MXP)"
-                    className="w-full rounded-xl border border-border/80 bg-background/80 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all group-hover:border-border"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="destination-input"
-                  className="flex items-center gap-1.5 text-[11px] font-bold text-foreground uppercase tracking-wider"
-                >
-                  <MapPin className="h-3.5 w-3.5 text-primary" />
-                  1. Destinazione
-                </label>
-                <div className="relative group">
-                  <input
-                    id="destination-input"
-                    type="text"
-                    value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
-                    placeholder="Dove vuoi andare? (es. Islanda, Giappone...)"
-                    className="w-full rounded-xl border border-border/80 bg-background/80 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all group-hover:border-border"
-                    required
-                  />
-                </div>
+            {/* 1. DESTINAZIONE */}
+            <div className="space-y-1.5">
+              <label
+                htmlFor="destination-input"
+                className="flex items-center gap-1.5 text-[11px] font-bold text-foreground uppercase tracking-wider"
+              >
+                <MapPin className="h-3.5 w-3.5 text-primary" />
+                1. Destinazione
+              </label>
+              <div className="relative group">
+                <input
+                  id="destination-input"
+                  type="text"
+                  value={destination}
+                  onChange={(e) => setDestination(e.target.value)}
+                  placeholder="Dove vuoi andare? (es. Islanda, Tokyo, Parigi, New York...)"
+                  className="w-full rounded-xl border border-border/80 bg-background/80 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all group-hover:border-border"
+                  required
+                />
               </div>
             </div>
 
