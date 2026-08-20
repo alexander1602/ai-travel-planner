@@ -1,23 +1,24 @@
 // utils/pdf-generator.ts
-// Generatore client-side di Travel Guide in PDF elegante, compatto, stampabile e ad alta risoluzione (A4).
+// Generatore client-side di Travel Guide PDF — layout interamente basato su tabelle
+// per compatibilità perfetta con html2canvas (zero flexbox, zero emoji nei badge piccoli).
 
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import type { Activity, ActivityCategory, Trip } from "@/types/trip";
 
-const CATEGORY_META: Record<ActivityCategory, { emoji: string; label: string; color: string; bg: string }> = {
-  SIGHTSEEING: { emoji: "🏛️", label: "Monumenti & Visite", color: "#3730a3", bg: "#e0e7ff" },
-  FOOD: { emoji: "🍽️", label: "Cibo & Ristoranti", color: "#9f1239", bg: "#ffe4e6" },
-  TRANSPORT: { emoji: "🚗", label: "Trasporti", color: "#075985", bg: "#e0f2fe" },
-  ACCOMMODATION: { emoji: "🏨", label: "Alloggio & Hotel", color: "#115e59", bg: "#ccfbf1" },
-  ACTIVITY: { emoji: "🎟️", label: "Esperienza", color: "#92400e", bg: "#fef3c7" },
-  SHOPPING: { emoji: "🛍️", label: "Shopping", color: "#9d174d", bg: "#fce7f3" },
-  NIGHTLIFE: { emoji: "🎉", label: "Vita Notturna", color: "#5b21b6", bg: "#ede9fe" },
-  WELLNESS: { emoji: "💆", label: "Relax & Wellness", color: "#065f46", bg: "#d1fae5" },
-  CULTURE: { emoji: "🎨", label: "Arte & Cultura", color: "#9a3412", bg: "#ffedd5" },
-  ENTERTAINMENT: { emoji: "🍿", label: "Intrattenimento", color: "#3730a3", bg: "#e0e7ff" },
-  RELAX: { emoji: "☕", label: "Pausa Relax", color: "#3f6212", bg: "#ecfccb" },
-  OTHER: { emoji: "📍", label: "Tappa", color: "#1e293b", bg: "#f1f5f9" },
+const CATEGORY_META: Record<ActivityCategory, { label: string; color: string; bg: string }> = {
+  SIGHTSEEING: { label: "Monumenti", color: "#3730a3", bg: "#e0e7ff" },
+  FOOD: { label: "Ristorazione", color: "#9f1239", bg: "#ffe4e6" },
+  TRANSPORT: { label: "Trasporti", color: "#075985", bg: "#e0f2fe" },
+  ACCOMMODATION: { label: "Alloggio", color: "#115e59", bg: "#ccfbf1" },
+  ACTIVITY: { label: "Esperienza", color: "#92400e", bg: "#fef3c7" },
+  SHOPPING: { label: "Shopping", color: "#9d174d", bg: "#fce7f3" },
+  NIGHTLIFE: { label: "Nightlife", color: "#5b21b6", bg: "#ede9fe" },
+  WELLNESS: { label: "Wellness", color: "#065f46", bg: "#d1fae5" },
+  CULTURE: { label: "Cultura", color: "#9a3412", bg: "#ffedd5" },
+  ENTERTAINMENT: { label: "Svago", color: "#3730a3", bg: "#e0e7ff" },
+  RELAX: { label: "Relax", color: "#3f6212", bg: "#ecfccb" },
+  OTHER: { label: "Tappa", color: "#1e293b", bg: "#f1f5f9" },
 };
 
 function sanitizeFilename(name: string): string {
@@ -66,583 +67,341 @@ function escapeHtml(str?: string): string {
     .replace(/'/g, "&#039;");
 }
 
-/**
- * Calcolo dinamico dell'altezza stimata per ottimizzare la ripartizione dei fogli A4
- */
-const PAGE_HEIGHT_BUDGET = 960; // Pixel utili per pagina A4
+// ── Impaginazione dinamica ──────────────────────────────────────────────
 
-function calculateActivityHeight(act: Activity): number {
-  let h = 58; // altezza base card attività
-  if (act.description) {
-    const lines = Math.max(1, Math.ceil(act.description.length / 80));
-    h += lines * 16;
-  }
-  if (act.hotelOptions && act.hotelOptions.length > 0) {
-    h += 48; // card hotel
-  }
-  return h + 8; // margine
+const PAGE_H = 960;
+
+function actH(act: Activity): number {
+  let h = 56;
+  if (act.description) h += Math.max(1, Math.ceil(act.description.length / 85)) * 15;
+  if (act.hotelOptions?.length) h += 44;
+  return h + 8;
 }
 
-function calculateDayHeaderHeight(day: Trip["days"][0]): number {
-  let h = 48; // card header giorno
-  if (day.description) {
-    h += 20; // citazione
-  }
-  return h + 10;
+function dayHeaderH(day: Trip["days"][0]): number {
+  return 48 + (day.description ? 20 : 0) + 8;
 }
 
-interface PlannedDaySlice {
-  day: Trip["days"][0];
-  activities: Activity[];
-  isContinuation?: boolean;
-  partIndex?: number;
-  totalParts?: number;
-}
+interface Slice { day: Trip["days"][0]; activities: Activity[]; isContinuation?: boolean; partIndex?: number; totalParts?: number; }
+interface PagePlan { type: "cover" | "itinerary"; days?: Slice[]; }
 
-interface PagePlan {
-  type: "cover" | "itinerary";
-  days?: PlannedDaySlice[];
-}
-
-/**
- * Algoritmo di impaginazione dinamica che riempie interamente i fogli A4
- * ed evita sprechi di spazio bianco o fogli mezzi vuoti.
- */
 function planPages(trip: Trip): PagePlan[] {
-  const pages: PagePlan[] = [];
+  const pages: PagePlan[] = [{ type: "cover" }];
+  let cur: Slice[] = [];
+  let curH = 0;
 
-  // Pagina 1: Cover + Overview + Dettagli Volo + Ripartizione Budget
-  pages.push({ type: "cover" });
-
-  let currentPageDays: PlannedDaySlice[] = [];
-  let currentPageHeight = 0;
+  const flush = () => { if (cur.length) { pages.push({ type: "itinerary", days: cur }); cur = []; curH = 0; } };
 
   for (const day of trip.days) {
-    const dayHeaderH = calculateDayHeaderHeight(day);
+    const dH = dayHeaderH(day);
     const acts = day.activities || [];
+    const aH = acts.reduce((s, a) => s + actH(a), 0);
+    const totalH = dH + aH;
 
     if (acts.length === 0) {
-      if (currentPageHeight + dayHeaderH > PAGE_HEIGHT_BUDGET && currentPageDays.length > 0) {
-        pages.push({ type: "itinerary", days: currentPageDays });
-        currentPageDays = [];
-        currentPageHeight = 0;
-      }
-      currentPageDays.push({ day, activities: [] });
-      currentPageHeight += dayHeaderH + 20;
+      if (curH + dH > PAGE_H) flush();
+      cur.push({ day, activities: [] });
+      curH += dH;
       continue;
     }
 
-    // Calcola altezza complessiva della giornata
-    const allActsH = acts.reduce((sum, act) => sum + calculateActivityHeight(act), 0);
-    const totalDayH = dayHeaderH + allActsH;
-
-    // Caso 1: L'intera giornata entra nello spazio rimanente del foglio corrente
-    if (currentPageHeight + totalDayH <= PAGE_HEIGHT_BUDGET) {
-      currentPageDays.push({ day, activities: acts });
-      currentPageHeight += totalDayH + 16;
+    if (curH + totalH <= PAGE_H) {
+      cur.push({ day, activities: acts });
+      curH += totalH + 14;
       continue;
     }
 
-    // Caso 2: L'intera giornata non entra nella pagina corrente
-    // Se la pagina ha già contenuto, chiudila e inizia su una nuova pagina
-    if (currentPageDays.length > 0) {
-      pages.push({ type: "itinerary", days: currentPageDays });
-      currentPageDays = [];
-      currentPageHeight = 0;
-    }
+    flush();
 
-    // Se l'intera giornata entra in una pagina fresca da sola, aggiungila
-    if (totalDayH <= PAGE_HEIGHT_BUDGET) {
-      currentPageDays.push({ day, activities: acts });
-      currentPageHeight += totalDayH + 16;
+    if (totalH <= PAGE_H) {
+      cur.push({ day, activities: acts });
+      curH = totalH + 14;
       continue;
     }
 
-    // Caso 3: La giornata è estremamente lunga (es. 8+ attività) e richiede più pagine
-    let actIndex = 0;
-    const slices: { acts: Activity[]; isCont: boolean }[] = [];
-
-    while (actIndex < acts.length) {
-      const sliceActs: Activity[] = [];
-      let sliceH = calculateDayHeaderHeight(day);
-
-      while (actIndex < acts.length) {
-        const act = acts[actIndex];
+    // Split long day across pages
+    let ai = 0;
+    const slices: { a: Activity[]; cont: boolean }[] = [];
+    while (ai < acts.length) {
+      const sa: Activity[] = [];
+      let sh = dH;
+      while (ai < acts.length) {
+        const act = acts[ai];
         if (!act) break;
-        const actH = calculateActivityHeight(act);
-        if (sliceActs.length > 0 && sliceH + actH > PAGE_HEIGHT_BUDGET) {
-          break;
-        }
-        sliceActs.push(act);
-        sliceH += actH;
-        actIndex++;
+        const ah = actH(act);
+        if (sa.length > 0 && sh + ah > PAGE_H) break;
+        sa.push(act);
+        sh += ah;
+        ai++;
       }
-
-      slices.push({ acts: sliceActs, isCont: slices.length > 0 });
+      slices.push({ a: sa, cont: slices.length > 0 });
     }
-
-    const totalParts = slices.length;
-    slices.forEach((s, idx) => {
-      if (idx > 0 && currentPageDays.length > 0) {
-        pages.push({ type: "itinerary", days: currentPageDays });
-        currentPageDays = [];
-        currentPageHeight = 0;
-      }
-      currentPageDays.push({
-        day,
-        activities: s.acts,
-        isContinuation: s.isCont,
-        partIndex: idx + 1,
-        totalParts: totalParts > 1 ? totalParts : undefined,
-      });
-      currentPageHeight = s.acts.reduce((sum, a) => sum + calculateActivityHeight(a), calculateDayHeaderHeight(day));
+    const tp = slices.length;
+    slices.forEach((s, i) => {
+      if (i > 0) flush();
+      cur.push({ day, activities: s.a, isContinuation: s.cont, partIndex: i + 1, totalParts: tp > 1 ? tp : undefined });
+      curH = s.a.reduce((sum, a) => sum + actH(a), dH);
     });
   }
-
-  if (currentPageDays.length > 0) {
-    pages.push({ type: "itinerary", days: currentPageDays });
-  }
-
+  flush();
   return pages;
 }
 
-/**
- * Costruisce l'HTML per la copertina e il sommario del viaggio (Pagina 1).
- * Usa Arial, sans-serif e padding espliciti senza flexbox fittizio per garantire centratura assoluta su html2canvas.
- */
-function renderCoverPage(trip: Trip, pageNum: number, totalPages: number): string {
-  const currency = trip.currency || "€";
-  const dateRangeStr = formatShortDateRange(trip.startDate, trip.endDate);
-  const flight = trip.selectedFlight;
-  const breakdown = trip.budgetBreakdown || {
-    hotel: 0,
-    transport: 0,
-    food: 0,
-    activities: 0,
-    extra: 0,
-    flight: 0,
-  };
+// ── Stili globali applicati via CSS, non inline ─────────────────────────
 
-  const totalActivitiesCount = trip.days.reduce((acc, d) => acc + (d.activities?.length || 0), 0);
+const GLOBAL_STYLE = `
+<style>
+  .pg { width:794px; height:1123px; max-height:1123px; box-sizing:border-box; background:#fff; color:#0f172a; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:1.35; position:relative; overflow:hidden; padding:36px 42px; }
+  .pg * { box-sizing:border-box; }
+  table { border-collapse:collapse; }
+  td { vertical-align:top; }
+  .badge { display:inline-block; padding:3px 8px; border-radius:5px; font-weight:700; line-height:1.2; }
+  .pill { display:inline-block; padding:3px 10px; border-radius:12px; font-weight:700; line-height:1.2; white-space:nowrap; }
+</style>
+`;
 
-  return `
-    <div class="pdf-page" style="width: 794px; height: 1123px; max-height: 1123px; padding: 40px 44px; box-sizing: border-box; background: #ffffff; color: #0f172a; font-family: Arial, Helvetica, sans-serif; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden;">
-      
-      <div>
-        <!-- TOP BRAND HEADER -->
-        <table style="width: 100%; border-collapse: collapse; border-bottom: 2px solid #f1f5f9; padding-bottom: 14px; margin-bottom: 20px;">
-          <tr>
-            <td style="vertical-align: middle; text-align: left;">
-              <table style="border-collapse: collapse;">
-                <tr>
-                  <td style="width: 34px; height: 34px; background: #4338ca; border-radius: 8px; text-align: center; vertical-align: middle; font-size: 16px; color: #ffffff;">
-                    ✈️
-                  </td>
-                  <td style="padding-left: 10px; vertical-align: middle;">
-                    <div style="font-size: 13px; font-weight: 800; letter-spacing: 0.5px; color: #0f172a; text-transform: uppercase; line-height: 1.2;">AI Travel Planner</div>
-                    <div style="font-size: 10px; color: #64748b; font-weight: 500; line-height: 1.2; margin-top: 2px;">Guida Ufficiale di Viaggio</div>
-                  </td>
-                </tr>
-              </table>
-            </td>
-            <td style="vertical-align: middle; text-align: right;">
-              <div style="display: inline-block; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 5px 12px; font-size: 11px; font-weight: 600; color: #334155; line-height: 1.2;">
-                <span style="color: #10b981; font-weight: 800;">●</span> Itinerario Confermato
-              </div>
-            </td>
-          </tr>
-        </table>
+// ── Copertina ───────────────────────────────────────────────────────────
 
-        <!-- HERO COVER CARD -->
-        <div style="background: #1e1b4b; border-radius: 16px; padding: 24px 28px; color: #ffffff; margin-bottom: 20px; box-sizing: border-box;">
-          
-          <!-- DESTINATION BADGE -->
-          <div style="display: inline-block; background: rgba(255, 255, 255, 0.22); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 14px; padding: 5px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #ffffff; line-height: 1.2; margin-bottom: 12px;">
-            📍 ${escapeHtml(trip.destination)}
-          </div>
+function renderCover(trip: Trip, pn: number, tp: number): string {
+  const cur = trip.currency || "€";
+  const dr = formatShortDateRange(trip.startDate, trip.endDate);
+  const fl = trip.selectedFlight;
+  const bb = trip.budgetBreakdown || { hotel:0, transport:0, food:0, activities:0, extra:0, flight:0 };
+  const tc = trip.days.reduce((a, d) => a + (d.activities?.length || 0), 0);
 
-          <h1 style="font-size: 24px; font-weight: 800; line-height: 1.25; margin: 0 0 8px 0; color: #ffffff;">
-            ${escapeHtml(trip.title || `Viaggio a ${trip.destination}`)}
-          </h1>
-          ${dateRangeStr ? `<div style="font-size: 12px; color: #cbd5e1; font-weight: 500; margin-bottom: 16px; line-height: 1.2;">📅 ${escapeHtml(dateRangeStr)}</div>` : ""}
-          
-          <!-- STATS ROW (TABLE FOR PERFECT ALIGNMENT) -->
-          <table style="width: 100%; border-collapse: collapse; border-top: 1px solid rgba(255, 255, 255, 0.2); margin-top: 14px; padding-top: 12px;">
-            <tr>
-              <td style="width: 33.33%; padding-top: 12px; vertical-align: top;">
-                <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 600; line-height: 1.2;">Durata</div>
-                <div style="font-size: 16px; font-weight: 700; color: #ffffff; line-height: 1.3; margin-top: 3px;">${trip.durationDays} Giorni</div>
-              </td>
-              <td style="width: 33.33%; padding-top: 12px; vertical-align: top;">
-                <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 600; line-height: 1.2;">Budget Totale</div>
-                <div style="font-size: 16px; font-weight: 700; color: #34d399; line-height: 1.3; margin-top: 3px;">${trip.totalBudget} ${escapeHtml(currency)}</div>
-              </td>
-              <td style="width: 33.33%; padding-top: 12px; vertical-align: top;">
-                <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: 600; line-height: 1.2;">Esperienze</div>
-                <div style="font-size: 16px; font-weight: 700; color: #ffffff; line-height: 1.3; margin-top: 3px;">${totalActivitiesCount} Tappe</div>
-              </td>
-            </tr>
-          </table>
-        </div>
+  return `${GLOBAL_STYLE}
+<div class="pg" style="padding:40px 42px; display:flex; flex-direction:column; justify-content:space-between;">
+<div>
 
-        <!-- FLIGHT DETAILS SECTION (SE PRESENTE) -->
-        ${flight ? `
-          <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; box-sizing: border-box;">
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
-              <tr>
-                <td style="vertical-align: middle; text-align: left;">
-                  <span style="font-size: 14px; vertical-align: middle; margin-right: 4px;">✈️</span>
-                  <span style="font-size: 12px; font-weight: 700; color: #0f172a; vertical-align: middle;">Dettagli Volo Selezionato</span>
-                </td>
-                <td style="vertical-align: middle; text-align: right;">
-                  <div style="display: inline-block; background: #e0e7ff; color: #4338ca; border-radius: 12px; padding: 3px 10px; font-size: 11px; font-weight: 700; line-height: 1.2;">
-                    ${escapeHtml(flight.airline)} ${flight.flightNumber ? `· ${escapeHtml(flight.flightNumber)}` : ""}
-                  </div>
-                </td>
-              </tr>
-            </table>
+<!-- BRAND -->
+<table style="width:100%; margin-bottom:18px; border-bottom:2px solid #f1f5f9; padding-bottom:12px;">
+<tr>
+  <td style="vertical-align:middle;">
+    <table><tr>
+      <td style="width:32px;height:32px;background:#4338ca;border-radius:8px;text-align:center;vertical-align:middle;color:#fff;font-size:15px;font-weight:800;">A</td>
+      <td style="padding-left:10px;vertical-align:middle;">
+        <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#0f172a;">AI Travel Planner</div>
+        <div style="font-size:10px;color:#64748b;margin-top:1px;">Guida Ufficiale di Viaggio</div>
+      </td>
+    </tr></table>
+  </td>
+  <td style="vertical-align:middle;text-align:right;">
+    <span class="badge" style="background:#f0fdf4;color:#166534;font-size:10px;border:1px solid #bbf7d0;">● Confermato</span>
+  </td>
+</tr>
+</table>
 
-            <table style="width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px;">
-              <tr>
-                <td style="width: 35%; padding: 10px 14px; vertical-align: middle; text-align: left;">
-                  <div style="font-size: 16px; font-weight: 800; color: #0f172a; line-height: 1.2;">${escapeHtml(flight.departureAirport)}</div>
-                  <div style="font-size: 11px; font-weight: 600; color: #475569; line-height: 1.2; margin-top: 2px;">${escapeHtml(flight.departureTime)}</div>
-                  ${flight.departureDate ? `<div style="font-size: 9.5px; color: #94a3b8; line-height: 1.2; margin-top: 1px;">${escapeHtml(flight.departureDate)}</div>` : ""}
-                </td>
+<!-- HERO -->
+<div style="background:#1e1b4b;border-radius:14px;padding:22px 26px;color:#fff;margin-bottom:18px;">
+  <span class="badge" style="background:rgba(255,255,255,.18);color:#fff;font-size:10px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;">${escapeHtml(trip.destination)}</span>
+  <h1 style="font-size:23px;font-weight:800;line-height:1.25;margin:10px 0 6px;color:#fff;">${escapeHtml(trip.title || `Viaggio a ${trip.destination}`)}</h1>
+  ${dr ? `<div style="font-size:11px;color:#cbd5e1;margin-bottom:14px;">${escapeHtml(dr)}</div>` : ""}
+  <table style="width:100%;border-top:1px solid rgba(255,255,255,.18);padding-top:12px;margin-top:2px;">
+  <tr>
+    <td style="width:33%;padding-top:10px;"><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;font-weight:600;">Durata</div><div style="font-size:15px;font-weight:700;color:#fff;margin-top:2px;">${trip.durationDays} Giorni</div></td>
+    <td style="width:33%;padding-top:10px;"><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;font-weight:600;">Budget Totale</div><div style="font-size:15px;font-weight:700;color:#34d399;margin-top:2px;">${trip.totalBudget} ${escapeHtml(cur)}</div></td>
+    <td style="width:33%;padding-top:10px;"><div style="font-size:9px;color:#94a3b8;text-transform:uppercase;font-weight:600;">Esperienze</div><div style="font-size:15px;font-weight:700;color:#fff;margin-top:2px;">${tc} Tappe</div></td>
+  </tr>
+  </table>
+</div>
 
-                <td style="width: 30%; padding: 10px; vertical-align: middle; text-align: center;">
-                  <div style="font-size: 9.5px; font-weight: 600; color: #64748b; line-height: 1.2;">${escapeHtml(flight.duration || "Volo Diretto")}</div>
-                  <div style="font-size: 11px; color: #94a3b8; margin: 2px 0;">─── ✈ ───</div>
-                  <div style="font-size: 9px; color: #94a3b8; line-height: 1.2;">${flight.stops === 0 ? "Diretto" : `${flight.stops} Scalo`}</div>
-                </td>
+${fl ? `
+<!-- VOLO -->
+<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
+  <table style="width:100%;margin-bottom:8px;"><tr>
+    <td style="vertical-align:middle;"><b style="font-size:12px;color:#0f172a;">Volo Selezionato</b></td>
+    <td style="vertical-align:middle;text-align:right;"><span class="badge" style="background:#e0e7ff;color:#4338ca;font-size:10px;">${escapeHtml(fl.airline)}${fl.flightNumber ? ` · ${escapeHtml(fl.flightNumber)}` : ""}</span></td>
+  </tr></table>
+  <table style="width:100%;background:#fff;border:1px solid #e2e8f0;border-radius:8px;">
+  <tr>
+    <td style="width:35%;padding:10px 14px;vertical-align:middle;">
+      <div style="font-size:16px;font-weight:800;color:#0f172a;">${escapeHtml(fl.departureAirport)}</div>
+      <div style="font-size:11px;color:#475569;margin-top:2px;">${escapeHtml(fl.departureTime)}</div>
+      ${fl.departureDate ? `<div style="font-size:9px;color:#94a3b8;margin-top:1px;">${escapeHtml(fl.departureDate)}</div>` : ""}
+    </td>
+    <td style="width:30%;padding:10px;vertical-align:middle;text-align:center;">
+      <div style="font-size:9px;font-weight:600;color:#64748b;">${escapeHtml(fl.duration || "Diretto")}</div>
+      <div style="font-size:10px;color:#94a3b8;margin:3px 0;">------&gt;</div>
+      <div style="font-size:9px;color:#94a3b8;">${fl.stops === 0 ? "Diretto" : `${fl.stops} scalo`}</div>
+    </td>
+    <td style="width:35%;padding:10px 14px;vertical-align:middle;text-align:right;">
+      <div style="font-size:16px;font-weight:800;color:#0f172a;">${escapeHtml(fl.arrivalAirport)}</div>
+      <div style="font-size:11px;color:#475569;margin-top:2px;">${escapeHtml(fl.arrivalTime)}</div>
+      ${fl.returnDate ? `<div style="font-size:9px;color:#94a3b8;margin-top:1px;">${escapeHtml(fl.returnDate)}</div>` : ""}
+    </td>
+  </tr>
+  </table>
+</div>
+` : ""}
 
-                <td style="width: 35%; padding: 10px 14px; vertical-align: middle; text-align: right;">
-                  <div style="font-size: 16px; font-weight: 800; color: #0f172a; line-height: 1.2;">${escapeHtml(flight.arrivalAirport)}</div>
-                  <div style="font-size: 11px; font-weight: 600; color: #475569; line-height: 1.2; margin-top: 2px;">${escapeHtml(flight.arrivalTime)}</div>
-                  ${flight.returnDate ? `<div style="font-size: 9.5px; color: #94a3b8; line-height: 1.2; margin-top: 1px;">${escapeHtml(flight.returnDate)}</div>` : ""}
-                </td>
-              </tr>
-            </table>
-          </div>
-        ` : ""}
+<!-- BUDGET -->
+<div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
+  <table style="width:100%;margin-bottom:8px;"><tr>
+    <td style="vertical-align:middle;"><b style="font-size:12px;color:#0f172a;">Budget Stimato</b></td>
+    <td style="vertical-align:middle;text-align:right;font-size:11px;color:#64748b;">Totale: <b style="color:#0f172a;">${trip.totalBudget} ${escapeHtml(cur)}</b></td>
+  </tr></table>
+  <table style="width:100%;border-spacing:6px;border-collapse:separate;margin:-6px;">
+  <tr>
+    <td style="width:33%;background:#f8fafc;border:1px solid #f1f5f9;border-radius:6px;padding:7px 9px;"><div style="font-size:10px;color:#64748b;">Alloggio</div><div style="font-size:13px;font-weight:700;color:#0f172a;margin-top:2px;">~${bb.hotel || 0} ${escapeHtml(cur)}</div></td>
+    <td style="width:33%;background:#f8fafc;border:1px solid #f1f5f9;border-radius:6px;padding:7px 9px;"><div style="font-size:10px;color:#64748b;">Ristorazione</div><div style="font-size:13px;font-weight:700;color:#0f172a;margin-top:2px;">~${bb.food || 0} ${escapeHtml(cur)}</div></td>
+    <td style="width:33%;background:#f8fafc;border:1px solid #f1f5f9;border-radius:6px;padding:7px 9px;"><div style="font-size:10px;color:#64748b;">Trasporti</div><div style="font-size:13px;font-weight:700;color:#0f172a;margin-top:2px;">~${bb.transport || 0} ${escapeHtml(cur)}</div></td>
+  </tr>
+  <tr>
+    <td style="width:33%;background:#f8fafc;border:1px solid #f1f5f9;border-radius:6px;padding:7px 9px;"><div style="font-size:10px;color:#64748b;">Attivita</div><div style="font-size:13px;font-weight:700;color:#0f172a;margin-top:2px;">~${bb.activities || 0} ${escapeHtml(cur)}</div></td>
+    <td style="width:33%;background:#f8fafc;border:1px solid #f1f5f9;border-radius:6px;padding:7px 9px;"><div style="font-size:10px;color:#64748b;">Extra</div><div style="font-size:13px;font-weight:700;color:#0f172a;margin-top:2px;">~${bb.extra || 0} ${escapeHtml(cur)}</div></td>
+    <td style="width:33%;background:#f8fafc;border:1px solid #f1f5f9;border-radius:6px;padding:7px 9px;">
+      ${bb.flight
+        ? `<div style="font-size:10px;color:#64748b;">Volo</div><div style="font-size:13px;font-weight:700;color:#0f172a;margin-top:2px;">~${bb.flight} ${escapeHtml(cur)}</div>`
+        : `<div style="font-size:10px;color:#64748b;">Giornate</div><div style="font-size:13px;font-weight:700;color:#0f172a;margin-top:2px;">${trip.days.length}</div>`
+      }
+    </td>
+  </tr>
+  </table>
+</div>
 
-        <!-- BUDGET BREAKDOWN SECTION -->
-        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; box-sizing: border-box;">
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
-            <tr>
-              <td style="vertical-align: middle; text-align: left;">
-                <span style="font-size: 14px; vertical-align: middle; margin-right: 4px;">📊</span>
-                <span style="font-size: 12px; font-weight: 700; color: #0f172a; vertical-align: middle;">Ripartizione Stimata del Budget</span>
-              </td>
-              <td style="vertical-align: middle; text-align: right;">
-                <span style="font-size: 11px; color: #64748b; line-height: 1.2;">Totale: <strong style="color: #0f172a;">${trip.totalBudget} ${escapeHtml(currency)}</strong></span>
-              </td>
-            </tr>
-          </table>
+<!-- TIPS -->
+<div style="background:#eff6ff;border:1px solid #dbeafe;border-radius:8px;padding:10px 14px;">
+  <div style="font-size:11px;font-weight:700;color:#1e40af;margin-bottom:3px;">Consigli pratici</div>
+  <div style="font-size:10px;color:#3b82f6;line-height:1.45;">Salva questo PDF sul tuo smartphone per consultarlo offline. Verifica orari di apertura e prenotazioni in loco.</div>
+</div>
 
-          <table style="width: 100%; border-collapse: separate; border-spacing: 8px; margin: -8px;">
-            <tr>
-              <td style="width: 33.33%; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 8px 10px; vertical-align: middle;">
-                <div style="font-size: 10.5px; color: #64748b; line-height: 1.2;">🏨 Alloggio</div>
-                <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1.2;">~${breakdown.hotel || 0} ${escapeHtml(currency)}</div>
-              </td>
-              <td style="width: 33.33%; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 8px 10px; vertical-align: middle;">
-                <div style="font-size: 10.5px; color: #64748b; line-height: 1.2;">🍽️ Ristorazione</div>
-                <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1.2;">~${breakdown.food || 0} ${escapeHtml(currency)}</div>
-              </td>
-              <td style="width: 33.33%; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 8px 10px; vertical-align: middle;">
-                <div style="font-size: 10.5px; color: #64748b; line-height: 1.2;">🚗 Trasporti</div>
-                <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1.2;">~${breakdown.transport || 0} ${escapeHtml(currency)}</div>
-              </td>
-            </tr>
-            <tr>
-              <td style="width: 33.33%; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 8px 10px; vertical-align: middle;">
-                <div style="font-size: 10.5px; color: #64748b; line-height: 1.2;">🎟️ Attività</div>
-                <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1.2;">~${breakdown.activities || 0} ${escapeHtml(currency)}</div>
-              </td>
-              <td style="width: 33.33%; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 8px 10px; vertical-align: middle;">
-                <div style="font-size: 10.5px; color: #64748b; line-height: 1.2;">🛍️ Extra & Svago</div>
-                <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1.2;">~${breakdown.extra || 0} ${escapeHtml(currency)}</div>
-              </td>
-              <td style="width: 33.33%; background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 8px; padding: 8px 10px; vertical-align: middle;">
-                ${breakdown.flight ? `
-                  <div style="font-size: 10.5px; color: #64748b; line-height: 1.2;">✈️ Volo</div>
-                  <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1.2;">~${breakdown.flight} ${escapeHtml(currency)}</div>
-                ` : `
-                  <div style="font-size: 10.5px; color: #64748b; line-height: 1.2;">🎯 Tappe Totali</div>
-                  <div style="font-size: 13px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1.2;">${trip.days.length} Giornate</div>
-                `}
-              </td>
-            </tr>
-          </table>
-        </div>
-
-        <!-- TRAVEL CHECKLIST / QUICK TIPS BOX -->
-        <div style="background: #eff6ff; border: 1px solid #dbeafe; border-radius: 10px; padding: 12px 16px; box-sizing: border-box;">
-          <div style="font-size: 11.5px; font-weight: 700; color: #1e40af; margin-bottom: 3px; line-height: 1.2;">
-            💡 Consigli Pratici per il Tuo Viaggio
-          </div>
-          <div style="font-size: 10.5px; color: #3b82f6; line-height: 1.45;">
-            Salva questo documento PDF sul tuo smartphone per consultarlo offline. Ricordati di verificare orari di apertura dei monumenti e prenotazioni in loco.
-          </div>
-        </div>
-      </div>
-
-      <!-- FOOTER -->
-      <table style="width: 100%; border-collapse: collapse; border-top: 1px solid #e2e8f0; padding-top: 10px;">
-        <tr>
-          <td style="vertical-align: middle; text-align: left; font-size: 9.5px; color: #94a3b8; padding-top: 8px;">
-            AI Travel Planner · Guida ufficiale di viaggio generata automaticamente
-          </td>
-          <td style="vertical-align: middle; text-align: right; font-size: 9.5px; color: #94a3b8; font-weight: 700; padding-top: 8px;">
-            Pagina ${pageNum} di ${totalPages}
-          </td>
-        </tr>
-      </table>
-    </div>
-  `;
+</div>
+<!-- FOOTER -->
+<table style="width:100%;border-top:1px solid #e2e8f0;margin-top:8px;"><tr>
+  <td style="padding-top:8px;font-size:9px;color:#94a3b8;">AI Travel Planner</td>
+  <td style="padding-top:8px;font-size:9px;color:#94a3b8;text-align:right;font-weight:700;">Pagina ${pn} di ${tp}</td>
+</tr></table>
+</div>`;
 }
 
-/**
- * Costruisce l'HTML per le pagine dell'itinerario giorno per giorno.
- * Usa tabelle e box inline con padding espliciti e font Arial per eliminare i bug di offset verticale di html2canvas.
- */
-function renderItineraryPage(
-  plan: PagePlan,
-  trip: Trip,
-  pageNum: number,
-  totalPages: number
-): string {
-  const currency = trip.currency || "€";
+// ── Pagine itinerario ───────────────────────────────────────────────────
 
-  const daysHtml = (plan.days || [])
-    .map((item) => {
-      const { day, activities, isContinuation, partIndex, totalParts } = item;
-      const formattedDate = formatDateIT(day.date);
+function renderItinerary(plan: PagePlan, trip: Trip, pn: number, tp: number): string {
+  const cur = trip.currency || "€";
 
-      const continuationBadge = isContinuation && totalParts && partIndex
-        ? `<div style="display: inline-block; background: #e2e8f0; color: #475569; padding: 2px 7px; border-radius: 5px; font-size: 9.5px; font-weight: 600; margin-left: 6px; line-height: 1.2; vertical-align: middle;">Parte ${partIndex}/${totalParts}</div>`
-        : "";
+  const html = (plan.days || []).map((item) => {
+    const { day, activities, isContinuation, partIndex, totalParts } = item;
+    const fd = formatDateIT(day.date);
+    const contBadge = isContinuation && totalParts && partIndex
+      ? ` <span class="badge" style="background:#e2e8f0;color:#475569;font-size:9px;">Parte ${partIndex}/${totalParts}</span>`
+      : "";
 
-      const activitiesHtml = activities.length > 0
-        ? activities
-            .map((act) => {
-              const meta = CATEGORY_META[act.category] || CATEGORY_META.OTHER;
-              
-              // Verifica se c'è un hotel selezionato
-              const selectedHotel = act.hotelOptions?.find(
-                (h) => h.id === act.selectedHotelId || h.isSelected
-              );
+    const actsHtml = activities.length > 0
+      ? activities.map((act) => {
+          const meta = CATEGORY_META[act.category] || CATEGORY_META.OTHER;
+          const hotel = act.hotelOptions?.find((h) => h.id === act.selectedHotelId || h.isSelected);
 
-              const priceBadge = act.estimatedCost > 0
-                ? `<div style="display: inline-block; background: #d1fae5; color: #047857; border-radius: 12px; padding: 3px 9px; font-size: 11px; font-weight: 700; line-height: 1.2; text-align: center; white-space: nowrap;">~${act.estimatedCost} ${escapeHtml(currency)}</div>`
-                : `<div style="display: inline-block; background: #f1f5f9; color: #475569; border-radius: 12px; padding: 3px 9px; font-size: 10px; font-weight: 600; line-height: 1.2; text-align: center; white-space: nowrap;">Gratuito</div>`;
+          const price = act.estimatedCost > 0
+            ? `<span class="pill" style="background:#d1fae5;color:#047857;font-size:11px;">~${act.estimatedCost} ${escapeHtml(cur)}</span>`
+            : `<span class="pill" style="background:#f1f5f9;color:#475569;font-size:10px;font-weight:600;">Gratuito</span>`;
 
-              return `
-                <table style="width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 8px; box-sizing: border-box;">
-                  <tr>
-                    <!-- TIME & CATEGORY CELL -->
-                    <td style="width: 120px; vertical-align: top; padding: 9px 8px 9px 10px;">
-                      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px; padding: 4px 6px; text-align: center; font-size: 11px; font-weight: 700; color: #0f172a; line-height: 1.2; margin-bottom: 4px;">
-                        ⏱ ${escapeHtml(act.time || "Orario Libero")}
-                      </div>
-                      <div style="background: ${meta.bg}; color: ${meta.color}; border-radius: 5px; padding: 3px 5px; text-align: center; font-size: 9.5px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                        ${meta.emoji} ${escapeHtml(meta.label)}
-                      </div>
-                    </td>
-
-                    <!-- CONTENT CELL -->
-                    <td style="vertical-align: top; padding: 9px 12px 9px 4px;">
-                      <table style="width: 100%; border-collapse: collapse; margin-bottom: 2px;">
-                        <tr>
-                          <td style="vertical-align: middle; text-align: left;">
-                            <div style="font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.25;">
-                              ${escapeHtml(act.title)}
-                            </div>
-                          </td>
-                          <td style="vertical-align: middle; text-align: right; width: 1%; white-space: nowrap; padding-left: 8px;">
-                            ${priceBadge}
-                          </td>
-                        </tr>
-                      </table>
-
-                      ${act.description ? `
-                        <div style="font-size: 11px; color: #475569; line-height: 1.4; margin-top: 2px;">
-                          ${escapeHtml(act.description)}
-                        </div>
-                      ` : ""}
-
-                      ${selectedHotel ? `
-                        <div style="background: #f0fdfa; border: 1px solid #ccfbf1; border-radius: 6px; padding: 5px 8px; margin-top: 6px; font-size: 10px; color: #0f766e;">
-                          <div style="font-weight: 700; line-height: 1.2;">
-                            🏨 ${escapeHtml(selectedHotel.name)} ${selectedHotel.rating ? `<span style="color: #d97706; font-size: 9.5px;">★ ${selectedHotel.rating}</span>` : ""}
-                          </div>
-                          ${selectedHotel.address ? `<div style="font-size: 9.5px; color: #115e59; margin-top: 2px; line-height: 1.2;">📍 ${escapeHtml(selectedHotel.address)}</div>` : ""}
-                          ${selectedHotel.pricePerNight ? `<div style="font-size: 9.5px; font-weight: 600; margin-top: 2px; line-height: 1.2;">Prezzo: ~${selectedHotel.pricePerNight} ${escapeHtml(selectedHotel.currency || currency)}/notte</div>` : ""}
-                        </div>
-                      ` : ""}
-                    </td>
-                  </tr>
-                </table>
-              `;
-            })
-            .join("")
-        : `
-          <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 10px; text-align: center; font-size: 11px; color: #64748b; margin-bottom: 8px;">
-            Nessuna attività programmata. Giornata libera per esplorare in autonomia!
-          </div>
-        `;
-
-      return `
-        <div style="margin-bottom: 14px; box-sizing: border-box;">
-          <!-- DAY CARD HEADER (TABLE FOR ABSOLUTE METRIC PRECISION) -->
-          <table style="width: 100%; border-collapse: collapse; background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #4338ca; border-radius: 8px; padding: 8px 12px; margin-bottom: 6px;">
-            <tr>
-              <td style="vertical-align: middle; text-align: left; padding: 6px 8px 6px 12px;">
-                <div style="display: inline-block; background: #e0e7ff; color: #4338ca; padding: 3px 7px; border-radius: 5px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; line-height: 1.2; vertical-align: middle;">
-                  Giorno ${day.dayNumber}
-                </div>
-                ${continuationBadge}
-                <span style="font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.2; vertical-align: middle; margin-left: 6px;">
-                  ${escapeHtml(day.title || `Giorno ${day.dayNumber}`)}
-                </span>
-                <div style="font-size: 10px; color: #64748b; line-height: 1.2; margin-top: 3px;">
-                  ${day.city ? `<span>📍 ${escapeHtml(day.city)}</span>` : ""}
-                  ${formattedDate ? `<span style="margin-left: 8px;">📅 ${escapeHtml(formattedDate)}</span>` : ""}
-                </div>
-              </td>
-              <td style="vertical-align: middle; text-align: right; padding: 6px 12px 6px 8px; white-space: nowrap;">
-                <div style="font-size: 9px; color: #64748b; text-transform: uppercase; line-height: 1.2;">Spesa stimata</div>
-                <div style="font-size: 12px; font-weight: 700; color: #0f172a; margin-top: 2px; line-height: 1.2;">
-                  ~${day.estimatedCost || 0} ${escapeHtml(currency)}
-                </div>
-              </td>
-            </tr>
-          </table>
-
-          ${day.description && !isContinuation ? `
-            <div style="font-size: 10.5px; color: #475569; font-style: italic; margin-bottom: 6px; padding: 0 4px; line-height: 1.35;">
-              "${escapeHtml(day.description)}"
-            </div>
-          ` : ""}
-
-          <!-- ACTIVITIES LIST -->
-          <div>
-            ${activitiesHtml}
-          </div>
-        </div>
-      `;
-    })
-    .join("");
-
-  return `
-    <div class="pdf-page" style="width: 794px; height: 1123px; max-height: 1123px; padding: 36px 44px; box-sizing: border-box; background: #ffffff; color: #0f172a; font-family: Arial, Helvetica, sans-serif; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden;">
-      
-      <div>
-        <!-- TOP RUNNING HEADER -->
-        <table style="width: 100%; border-collapse: collapse; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 14px;">
-          <tr>
-            <td style="vertical-align: middle; text-align: left; font-size: 10.5px; font-weight: 700; color: #4338ca; text-transform: uppercase; letter-spacing: 0.5px;">
-              ✈️ ${escapeHtml(trip.title || trip.destination)} · Itinerario Dettagliato
-            </td>
-            <td style="vertical-align: middle; text-align: right; font-size: 9.5px; color: #94a3b8;">
-              AI Travel Planner
-            </td>
-          </tr>
-        </table>
-
-        <!-- DAYS CONTENT -->
-        <div>
-          ${daysHtml}
-        </div>
-      </div>
-
-      <!-- FOOTER -->
-      <table style="width: 100%; border-collapse: collapse; border-top: 1px solid #e2e8f0; padding-top: 8px;">
-        <tr>
-          <td style="vertical-align: middle; text-align: left; font-size: 9.5px; color: #94a3b8; padding-top: 6px;">
-            Guida ufficiale stampabile · ${escapeHtml(trip.destination)}
-          </td>
-          <td style="vertical-align: middle; text-align: right; font-size: 9.5px; color: #94a3b8; font-weight: 700; padding-top: 6px;">
-            Pagina ${pageNum} di ${totalPages}
-          </td>
-        </tr>
-      </table>
+          return `
+<table style="width:100%;background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:7px;">
+<tr>
+  <td style="width:118px;padding:8px;vertical-align:top;">
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;padding:4px 6px;text-align:center;font-size:11px;font-weight:700;color:#0f172a;line-height:1.2;margin-bottom:4px;">
+      ${escapeHtml(act.time || "Orario libero")}
     </div>
-  `;
+    <div style="background:${meta.bg};color:${meta.color};border-radius:4px;padding:3px 5px;text-align:center;font-size:9px;font-weight:700;line-height:1.2;">
+      ${escapeHtml(meta.label)}
+    </div>
+  </td>
+  <td style="padding:8px 10px 8px 4px;vertical-align:top;">
+    <table style="width:100%;margin-bottom:2px;"><tr>
+      <td style="vertical-align:middle;"><div style="font-size:13px;font-weight:700;color:#0f172a;line-height:1.25;">${escapeHtml(act.title)}</div></td>
+      <td style="vertical-align:middle;text-align:right;white-space:nowrap;padding-left:8px;">${price}</td>
+    </tr></table>
+    ${act.description ? `<div style="font-size:10.5px;color:#475569;line-height:1.4;margin-top:2px;">${escapeHtml(act.description)}</div>` : ""}
+    ${hotel ? `
+    <div style="background:#f0fdfa;border:1px solid #ccfbf1;border-radius:5px;padding:5px 7px;margin-top:5px;font-size:10px;color:#0f766e;">
+      <b>${escapeHtml(hotel.name)}</b>${hotel.rating ? ` <span style="color:#d97706;font-size:9px;">★${hotel.rating}</span>` : ""}
+      ${hotel.address ? `<div style="font-size:9px;color:#115e59;margin-top:1px;">${escapeHtml(hotel.address)}</div>` : ""}
+      ${hotel.pricePerNight ? `<div style="font-size:9px;font-weight:600;margin-top:1px;">~${hotel.pricePerNight} ${escapeHtml(hotel.currency || cur)}/notte</div>` : ""}
+    </div>` : ""}
+  </td>
+</tr>
+</table>`;
+        }).join("")
+      : `<div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;padding:10px;text-align:center;font-size:10px;color:#64748b;margin-bottom:7px;">Giornata libera</div>`;
+
+    return `
+<div style="margin-bottom:14px;">
+  <!-- Day header -->
+  <table style="width:100%;background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #4338ca;border-radius:8px;margin-bottom:6px;">
+  <tr>
+    <td style="padding:7px 10px;vertical-align:middle;">
+      <div>
+        <span class="badge" style="background:#e0e7ff;color:#4338ca;font-size:10px;text-transform:uppercase;">Giorno ${day.dayNumber}</span>${contBadge}
+        <span style="font-size:13px;font-weight:700;color:#0f172a;margin-left:6px;">${escapeHtml(day.title || `Giorno ${day.dayNumber}`)}</span>
+      </div>
+      <div style="font-size:10px;color:#64748b;margin-top:2px;">
+        ${day.city ? `${escapeHtml(day.city)}` : ""}${day.city && fd ? " · " : ""}${fd ? escapeHtml(fd) : ""}
+      </div>
+    </td>
+    <td style="padding:7px 12px;vertical-align:middle;text-align:right;white-space:nowrap;">
+      <div style="font-size:9px;color:#64748b;text-transform:uppercase;">Spesa stimata</div>
+      <div style="font-size:12px;font-weight:700;color:#0f172a;margin-top:1px;">~${day.estimatedCost || 0} ${escapeHtml(cur)}</div>
+    </td>
+  </tr>
+  </table>
+  ${day.description && !isContinuation ? `<div style="font-size:10px;color:#475569;font-style:italic;margin-bottom:5px;padding:0 3px;line-height:1.35;">"${escapeHtml(day.description)}"</div>` : ""}
+  ${actsHtml}
+</div>`;
+  }).join("");
+
+  return `${GLOBAL_STYLE}
+<div class="pg">
+<div>
+  <!-- Running header -->
+  <table style="width:100%;border-bottom:1px solid #e2e8f0;margin-bottom:14px;padding-bottom:6px;">
+  <tr>
+    <td style="vertical-align:middle;font-size:10px;font-weight:700;color:#4338ca;text-transform:uppercase;letter-spacing:.5px;">${escapeHtml(trip.title || trip.destination)} · Itinerario</td>
+    <td style="vertical-align:middle;text-align:right;font-size:9px;color:#94a3b8;">AI Travel Planner</td>
+  </tr>
+  </table>
+  ${html}
+</div>
+<!-- Footer -->
+<table style="width:100%;border-top:1px solid #e2e8f0;position:absolute;bottom:36px;left:42px;right:42px;"><tr>
+  <td style="padding-top:8px;font-size:9px;color:#94a3b8;">${escapeHtml(trip.destination)}</td>
+  <td style="padding-top:8px;font-size:9px;color:#94a3b8;text-align:right;font-weight:700;">Pagina ${pn} di ${tp}</td>
+</tr></table>
+</div>`;
 }
 
-/**
- * Genera e scarica automaticamente la guida di viaggio in formato PDF A4.
- */
+// ── Download ────────────────────────────────────────────────────────────
+
 export async function downloadTripPDF(trip: Trip): Promise<void> {
   const plans = planPages(trip);
-  const totalPages = plans.length;
+  const total = plans.length;
 
-  // Crea container DOM invisibile per il rendering
   const container = document.createElement("div");
-  container.id = "ai-travel-planner-pdf-export-container";
-  container.style.position = "fixed";
-  container.style.left = "-99999px";
-  container.style.top = "0";
-  container.style.width = "794px";
-  container.style.zIndex = "-9999";
-  container.style.backgroundColor = "#ffffff";
-  container.style.color = "#0f172a";
+  container.id = "pdf-export-tmp";
+  container.style.cssText = "position:fixed;left:-99999px;top:0;width:794px;z-index:-9999;background:#fff;color:#0f172a;";
 
-  let pagesHtml = "";
-  plans.forEach((plan, index) => {
-    const pageNum = index + 1;
-    if (plan.type === "cover") {
-      pagesHtml += renderCoverPage(trip, pageNum, totalPages);
-    } else {
-      pagesHtml += renderItineraryPage(plan, trip, pageNum, totalPages);
-    }
+  let html = "";
+  plans.forEach((p, i) => {
+    html += p.type === "cover" ? renderCover(trip, i + 1, total) : renderItinerary(p, trip, i + 1, total);
   });
 
-  container.innerHTML = pagesHtml;
+  container.innerHTML = html;
   document.body.appendChild(container);
 
   try {
-    const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "mm",
-      format: "a4",
-      compress: true,
-    });
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
+    const pages = container.querySelectorAll<HTMLElement>(".pg");
 
-    const pageElements = container.querySelectorAll<HTMLElement>(".pdf-page");
-
-    for (let i = 0; i < pageElements.length; i++) {
-      const pageEl = pageElements[i];
-      if (!pageEl) continue;
-
-      const canvas = await html2canvas(pageEl, {
-        scale: 2, // 2x High-DPI per massima nitidezza tipografica
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#ffffff",
-        windowWidth: 794,
-      });
-
-      const imgData = canvas.toDataURL("image/jpeg", 0.95);
-
-      if (i > 0) {
-        pdf.addPage("a4", "portrait");
-      }
-
-      // A4 dimensions in mm: 210 x 297
-      pdf.addImage(imgData, "JPEG", 0, 0, 210, 297, undefined, "FAST");
+    for (let i = 0; i < pages.length; i++) {
+      const el = pages[i];
+      if (!el) continue;
+      const canvas = await html2canvas(el, { scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff", windowWidth: 794 });
+      const img = canvas.toDataURL("image/jpeg", 0.95);
+      if (i > 0) pdf.addPage("a4", "portrait");
+      pdf.addImage(img, "JPEG", 0, 0, 210, 297, undefined, "FAST");
     }
 
-    const cleanDest = sanitizeFilename(trip.destination || trip.title || "viaggio");
-    const filename = `guida-viaggio-${cleanDest || "itinerario"}.pdf`;
-
-    pdf.save(filename);
+    pdf.save(`guida-viaggio-${sanitizeFilename(trip.destination || trip.title || "viaggio") || "itinerario"}.pdf`);
   } finally {
-    // Rimuovi sempre il container DOM temporaneo
-    if (document.body.contains(container)) {
-      document.body.removeChild(container);
-    }
+    if (document.body.contains(container)) document.body.removeChild(container);
   }
 }
