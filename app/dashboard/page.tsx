@@ -4,20 +4,18 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bot, Sparkles, X, Plane } from "lucide-react";
+import { Bot, Sparkles, X } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { ChatBox } from "@/components/chat/ChatBox";
 import { TripTimeline } from "@/components/trip/TripTimeline";
 import { LoadingScreen } from "@/components/common/LoadingScreen";
 import { ActivityAlternativesModal } from "@/components/trip/ActivityAlternativesModal";
-import { FlightWidget } from "@/components/trip/FlightWidget";
 import { CalendarExportButton } from "@/components/trip/CalendarExportButton";
 import type { Activity, ActivityAlternative, Trip } from "@/types/trip";
 
 export default function DashboardPage() {
   const [trip, setTrip] = useState<Trip | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeSidebarTab, setActiveSidebarTab] = useState<"flights" | "chat">("flights");
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
   const [selectedActivityForAlternatives, setSelectedActivityForAlternatives] = useState<{
     dayId: string;
@@ -148,43 +146,11 @@ export default function DashboardPage() {
           />
         </section>
 
-        {/* Sidebar — 2a Colonna: Voli & Trip Assistant */}
-        <section aria-label="Supporto viaggio" className="space-y-4 lg:col-span-4 lg:sticky lg:top-24 lg:self-start">
-          {/* Tab Selector Desktop */}
-          <div className="flex rounded-xl bg-muted/60 p-1 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => setActiveSidebarTab("flights")}
-              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 transition-all cursor-pointer ${
-                activeSidebarTab === "flights"
-                  ? "bg-background text-foreground shadow-xs ring-1 ring-primary/20"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Plane className="h-3.5 w-3.5 text-primary" />
-              <span>Ricerca Voli</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveSidebarTab("chat")}
-              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 transition-all cursor-pointer ${
-                activeSidebarTab === "chat"
-                  ? "bg-background text-foreground shadow-xs ring-1 ring-primary/20"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Bot className="h-3.5 w-3.5 text-primary" />
-              <span>Trip Assistant</span>
-            </button>
+        {/* Sidebar — 2a Colonna: Trip Assistant */}
+        <section aria-label="Assistente di viaggio" className="hidden lg:block lg:col-span-4 lg:sticky lg:top-24 lg:self-start">
+          <div className="h-[calc(100vh-140px)] min-h-[550px] max-h-[750px]">
+            <ChatBox trip={trip} onTripUpdate={handleTripUpdate} />
           </div>
-
-          {activeSidebarTab === "flights" ? (
-            <FlightWidget trip={trip} />
-          ) : (
-            <div className="h-[620px]">
-              <ChatBox trip={trip} onTripUpdate={handleTripUpdate} />
-            </div>
-          )}
         </section>
       </main>
 
